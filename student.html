@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Expeditions Student Viewer</title>
+
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Expeditions">
+  <meta name="theme-color" content="#020617">
+
+  <!-- PWA Web App Manifest -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="https://placehold.co/192x192/4338ca/ffffff?text=VR">
+
+  <!-- Tailwind CSS & FontAwesome Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Three.js (3D Panoramas) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- PeerJS (WebRTC Realtime Mesh) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      background: #000000;
+    }
+
+    #webgl-canvas-container {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      background: #000000;
+    }
+
+    .indicator-arrow {
+      position: absolute;
+      z-index: 25;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.15s ease;
+    }
+
+    @keyframes pulse-attention {
+      0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.8)); }
+      50% { transform: scale(1.18); filter: drop-shadow(0 0 16px rgba(245, 158, 11, 1)); }
+    }
+
+    .pulse-glow {
+      animation: pulse-attention 1.6s infinite ease-in-out;
+    }
+
+    /* Homido Grab Physical Center Divider Line */
+    #vr-center-separator {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 3px;
+      transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.35);
+      z-index: 35;
+      pointer-events: none;
+      display: none;
+    }
+
+    #vr-center-separator::before, #vr-center-separator::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      border-radius: 50%;
+    }
+    #vr-center-separator::before { top: 18px; }
+    #vr-center-separator::after { bottom: 18px; }
+
+    .vr-split-active #vr-center-separator {
+      display: block;
+    }
+
+    /* Force landscape guide for iOS Safari */
+    #rotate-device-prompt {
+      display: none;
+    }
+    @media (orientation: portrait) {
+      .vr-split-active #rotate-device-prompt {
+        display: flex !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-black text-slate-100 font-sans h-full overflow-hidden select-none">
+
+  <!-- 3D WEBGL CANVAS -->
+  <div id="webgl-canvas-container"></div>
+
+  <!-- HOMIDO GRAB CENTER DIVIDER -->
+  <div id="vr-center-separator"></div>
+
+  <!-- ROTATE TO LANDSCAPE OVERLAY (for Cardboard/Homido Grab) -->
+  <div id="rotate-device-prompt" class="fixed inset-0 z-50 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center space-y-4">
+    <div class="w-16 h-16 rounded-3xl bg-indigo-600/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center text-3xl animate-bounce">
+      <i class="fa-solid fa-rotate"></i>
+    </div>
+    <h3 class="text-lg font-black text-white">Rotate Device to Landscape</h3>
+    <p class="text-xs text-slate-400 max-w-xs leading-relaxed">
+      Turn your phone horizontally and insert it into your <strong>Homido Grab</strong> viewer.
+    </p>
+  </div>
+
+  <!-- SCREEN 1: JOIN & ROOM CODE ENTRY -->
+  <div id="screen-join" class="fixed inset-0 z-40 bg-slate-950 flex flex-col justify-between overflow-y-auto p-4 sm:p-6">
+    <header class="flex items-center justify-between border-b border-slate-800/80 pb-4 max-w-xl mx-auto w-full">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-600/30 text-white text-lg">
+          <i class="fa-solid fa-vr-cardboard"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-black text-white tracking-tight flex items-center gap-2">
+            <span>Expeditions VR</span>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-400 bg-indigo-950/80 border border-indigo-500/30 px-2 py-0.5 rounded-full">Student</span>
+          </h1>
+          <p class="text-xs text-slate-400">Classroom Virtual Reality Explorer</p>
+        </div>
+      </div>
+      <div class="text-[11px] font-mono text-slate-500" id="network-client-id">P2P Ready</div>
+    </header>
+
+    <main class="max-w-md w-full mx-auto my-auto p-6 sm:p-8 bg-slate-900/90 border border-slate-800 rounded-3xl shadow-2xl space-y-6">
+      <div class="text-center space-y-1.5">
+        <div class="inline-flex p-3 rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 mb-1">
+          <i class="fa-solid fa-compass text-2xl"></i>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-black text-white">Join Your Classroom</h2>
+        <p class="text-xs text-slate-400">Tap below to enter and enable motion tracking.</p>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-slate-300 text-xs font-semibold mb-1">5-Digit Room Code</label>
+          <input type="text" id="input-room-code" maxlength="5" value="48291" placeholder="48291" autocomplete="off"
+                 class="w-full bg-slate-950 border border-slate-700/80 focus:border-indigo-500 rounded-2xl px-4 py-3.5 text-center text-2xl font-mono font-black tracking-widest text-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition">
+        </div>
+
+        <!-- Viewer Selection -->
+        <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <i class="fa-solid fa-glasses text-indigo-400 text-sm"></i>
+            <div>
+              <p class="text-xs font-bold text-white">Viewer Profile</p>
+              <p class="text-[10px] text-slate-400">Optimized for Homido Grab (100° FOV, 63mm IPD)</p>
+            </div>
+          </div>
+          <span class="text-[10px] font-mono font-bold text-indigo-300 bg-indigo-950/80 border border-indigo-500/30 px-2 py-1 rounded-lg">Homido</span>
+        </div>
+
+        <div id="join-error-pill" class="hidden p-3 bg-rose-950/80 border border-rose-800 text-rose-300 text-xs rounded-xl flex items-center gap-2">
+          <i class="fa-solid fa-circle-exclamation text-sm shrink-0"></i>
+          <span id="join-error-msg">Connecting to room...</span>
+        </div>
+
+        <div id="join-status-pill" class="hidden p-3 bg-indigo-950/80 border border-indigo-700/80 text-indigo-300 text-xs rounded-xl flex items-center gap-2">
+          <i class="fa-solid fa-circle-notch fa-spin text-sm shrink-0"></i>
+          <span id="join-status-msg">Contacting teacher...</span>
+        </div>
+
+        <button type="button" id="btn-join-room" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-sm py-3.5 rounded-2xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 transition active:scale-95">
+          <i class="fa-solid fa-satellite-dish" id="btn-join-icon"></i>
+          <span id="btn-join-text">Enter Expedition</span>
+        </button>
+      </div>
+
+      <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
+        <span class="flex items-center gap-1.5">
+          <i class="fa-solid fa-wifi text-emerald-400"></i>
+          <span>Direct WebRTC Mesh</span>
+        </span>
+        <button id="btn-quick-sample-tour" class="text-indigo-400 hover:text-indigo-300 transition">Explore Preview Tour</button>
+      </div>
+    </main>
+
+    <footer class="text-center text-xs text-slate-500 py-3">
+      Compatible with Homido Grab, Google Cardboard, Chromebooks, and iPads
+    </footer>
+  </div>
+
+  <!-- SCREEN 2: ACTIVE EXPEDITION HUD -->
+  <div id="screen-hud" class="fixed inset-0 z-30 pointer-events-none hidden">
+    <header id="hud-top-bar" class="pointer-events-auto p-3 sm:p-4 flex items-center justify-between bg-gradient-to-b from-slate-950/90 via-slate-950/50 to-transparent transition-opacity duration-300">
+      <div class="flex items-center gap-2 sm:gap-3 truncate">
+        <button id="btn-leave-room" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 backdrop-blur-md">
+          <i class="fa-solid fa-arrow-left text-[11px]"></i>
+          <span class="hidden sm:inline">Leave</span>
+        </button>
+
+        <div class="bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 backdrop-blur-md">
+          <i class="fa-solid fa-signal text-[10px] text-emerald-400"></i>
+          <span id="hud-room-code">ROOM 48291</span>
+        </div>
+
+        <div class="flex flex-col truncate">
+          <span id="hud-tour-title" class="text-xs sm:text-sm font-bold text-white truncate">Apollo 11</span>
+          <span id="hud-scene-title" class="text-[10px] sm:text-xs text-slate-300 truncate">Scene 1</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1.5 sm:gap-2">
+        <button id="btn-toggle-gyro" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 backdrop-blur-md">
+          <i class="fa-solid fa-arrows-up-down-left-right text-indigo-400"></i>
+          <span class="hidden md:inline" id="lbl-gyro">Motion Look</span>
+        </button>
+
+        <!-- Homido VR Toggle Button -->
+        <button id="btn-toggle-cardboard-vr" class="bg-indigo-600 hover:bg-indigo-500 border border-indigo-400 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 backdrop-blur-md shadow-md shadow-indigo-600/30">
+          <i class="fa-solid fa-glasses"></i>
+          <span id="lbl-vr-mode">Homido VR</span>
+        </button>
+
+        <!-- Viewer Optical Tuning Button -->
+        <button id="btn-toggle-optics" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 w-8 h-8 rounded-xl flex items-center justify-center transition active:scale-95 backdrop-blur-md" title="Adjust Homido Grab Lens IPD">
+          <i class="fa-solid fa-sliders text-xs"></i>
+        </button>
+
+        <button id="btn-toggle-fullscreen" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 w-8 h-8 rounded-xl flex items-center justify-center transition active:scale-95 backdrop-blur-md">
+          <i class="fa-solid fa-expand text-xs"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- OPTICAL CALIBRATION MODAL FOR HOMIDO GRAB -->
+    <div id="homido-optics-modal" class="pointer-events-auto fixed top-16 right-4 z-40 bg-slate-950/95 border border-indigo-500/40 rounded-2xl p-4 shadow-2xl backdrop-blur-xl w-72 space-y-3 hidden">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+        <span class="text-xs font-bold text-white flex items-center gap-1.5">
+          <i class="fa-solid fa-glasses text-indigo-400"></i>
+          <span>Homido Grab Optics</span>
+        </span>
+        <button id="btn-close-optics" class="text-slate-400 hover:text-white text-xs p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-2">
+        <div class="flex justify-between text-[11px]">
+          <span class="text-slate-300">Interpupillary (IPD):</span>
+          <span id="lbl-ipd-val" class="font-mono text-indigo-400 font-bold">63 mm</span>
+        </div>
+        <input type="range" id="slider-ipd" min="54" max="72" value="63" step="0.5" class="w-full accent-indigo-500">
+        <p class="text-[10px] text-slate-500 leading-tight">
+          Adjust if you experience double vision or eye strain in your Homido Grab headset.
+        </p>
+      </div>
+    </div>
+
+    <!-- MOTION PERMISSION RECOVERY MODAL (iOS Safari) -->
+    <div id="motion-permission-modal" class="pointer-events-auto fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl">
+        <div class="w-12 h-12 mx-auto rounded-2xl bg-indigo-600/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center text-xl">
+          <i class="fa-solid fa-compass"></i>
+        </div>
+        <div class="space-y-1">
+          <h3 class="text-base font-bold text-white">Enable Motion Tracking</h3>
+          <p id="motion-modal-reason" class="text-xs text-slate-400 leading-relaxed">
+            Safari requires permission to use your device's gyroscope.
+          </p>
+        </div>
+        
+        <div id="motion-safari-help" class="hidden p-3 bg-slate-950/80 border border-amber-500/30 text-amber-200 text-[11px] rounded-xl text-left space-y-1">
+          <p class="font-bold flex items-center gap-1.5 text-amber-400">
+            <i class="fa-solid fa-triangle-exclamation text-xs"></i>
+            <span>Safari Permission Latched Denied:</span>
+          </p>
+          <p class="text-slate-300">Apple locks motion once dismissed. To reset:</p>
+          <ol class="list-decimal list-inside space-y-0.5 text-slate-400 text-[10px]">
+            <li>Close this tab.</li>
+            <li>Open this URL in a <strong>New Private Tab</strong>.</li>
+            <li>Tap <strong>Allow</strong> when the iOS prompt appears.</li>
+          </ol>
+        </div>
+
+        <div class="space-y-2 pt-2">
+          <button id="btn-grant-motion-direct" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-3 rounded-xl shadow-lg shadow-indigo-600/30 transition active:scale-95">
+            Prompt for Motion Access
+          </button>
+          <button id="btn-dismiss-motion-modal" class="w-full text-slate-400 hover:text-white text-xs py-2 transition">
+            Continue with Drag Look
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DIRECTIONAL ATTENTION ARROWS -->
+    <div id="arrow-left" class="indicator-arrow left-4 top-1/2 -translate-y-1/2 opacity-0">
+      <div class="pulse-glow bg-amber-500/90 text-slate-950 px-3 py-2 rounded-2xl font-black text-xs flex items-center gap-2 shadow-2xl border-2 border-amber-300">
+        <i class="fa-solid fa-arrow-left text-sm"></i>
+        <span>Look Left</span>
+      </div>
+    </div>
+
+    <div id="arrow-right" class="indicator-arrow right-4 top-1/2 -translate-y-1/2 opacity-0">
+      <div class="pulse-glow bg-amber-500/90 text-slate-950 px-3 py-2 rounded-2xl font-black text-xs flex items-center gap-2 shadow-2xl border-2 border-amber-300">
+        <span>Look Right</span>
+        <i class="fa-solid fa-arrow-right text-sm"></i>
+      </div>
+    </div>
+
+    <div id="arrow-up" class="indicator-arrow top-16 left-1/2 -translate-x-1/2 opacity-0">
+      <div class="pulse-glow bg-amber-500/90 text-slate-950 px-3 py-1.5 rounded-2xl font-black text-xs flex items-center gap-2 shadow-2xl border-2 border-amber-300">
+        <i class="fa-solid fa-arrow-up text-xs"></i>
+        <span>Look Up</span>
+      </div>
+    </div>
+
+    <div id="arrow-down" class="indicator-arrow bottom-16 left-1/2 -translate-x-1/2 opacity-0">
+      <div class="pulse-glow bg-amber-500/90 text-slate-950 px-3 py-1.5 rounded-2xl font-black text-xs flex items-center gap-2 shadow-2xl border-2 border-amber-300">
+        <i class="fa-solid fa-arrow-down text-xs"></i>
+        <span>Look Down</span>
+      </div>
+    </div>
+
+    <!-- TEACHER SPOTLIGHT CARD -->
+    <div id="spotlight-card" class="pointer-events-auto fixed bottom-5 left-1/2 -translate-x-1/2 max-w-lg w-[92%] sm:w-auto bg-slate-950/95 border border-indigo-500/50 rounded-2xl p-4 shadow-2xl backdrop-blur-xl transition-all duration-300 transform translate-y-32 opacity-0 flex flex-col gap-2.5">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2 text-indigo-300 text-xs font-bold uppercase tracking-wider">
+          <i class="fa-solid fa-crosshairs text-amber-400"></i>
+          <span>Teacher Spotlight</span>
+        </div>
+        <button id="btn-dismiss-spotlight-card" class="text-slate-400 hover:text-white p-1 rounded-lg text-xs">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Detail Image Preview -->
+      <div id="spotlight-img-container" class="hidden relative rounded-xl overflow-hidden bg-slate-900 border border-slate-800 max-h-48 group cursor-pointer" title="Tap to inspect full image">
+        <img id="spotlight-target-img" src="" alt="Spotlight Detail" class="w-full h-40 object-cover group-hover:scale-105 transition duration-300">
+        <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent flex items-end justify-between p-2">
+          <span class="text-[10px] text-slate-300 bg-slate-900/80 px-2 py-0.5 rounded-full border border-slate-700/60 backdrop-blur-sm">
+            <i class="fa-solid fa-magnifying-glass-plus mr-1 text-amber-400"></i>Tap to Zoom
+          </span>
+        </div>
+      </div>
+
+      <div>
+        <h3 id="spotlight-target-title" class="text-sm font-bold text-white">Target Name</h3>
+        <p id="spotlight-target-text" class="text-xs text-slate-300 leading-relaxed mt-1">Target narration description...</p>
+      </div>
+
+      <div class="pt-1 flex items-center justify-end">
+        <button id="btn-align-view-spotlight" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1 rounded-xl transition flex items-center gap-1.5 active:scale-95 shadow-md shadow-indigo-600/30">
+          <i class="fa-solid fa-eye text-[10px]"></i>
+          <span>Center Target</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Student Fullscreen Image Zoom Modal -->
+    <div id="spotlight-lightbox-modal" class="pointer-events-auto fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-xl flex flex-col items-center justify-center p-4 hidden">
+      <button id="btn-close-lightbox" class="absolute top-4 right-4 text-white bg-slate-800 hover:bg-slate-700 w-10 h-10 rounded-2xl flex items-center justify-center text-sm shadow-xl active:scale-95 transition">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+      <div class="max-w-3xl w-full max-h-[80vh] flex flex-col items-center justify-center">
+        <img id="lightbox-full-img" src="" alt="Artifact Zoom" class="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl border border-slate-800">
+        <p id="lightbox-caption" class="text-xs font-semibold text-slate-300 mt-3 text-center px-4"></p>
+      </div>
+    </div>
+
+    <div id="student-toast" class="fixed top-16 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-700/80 text-white px-4 py-2 rounded-full text-xs font-semibold shadow-2xl backdrop-blur transition-opacity duration-300 pointer-events-none opacity-0"></div>
+  </div>
+
+  <script>
+    const DEFAULT_PRESET_TOUR = {
+      id: "apollo-11",
+      title: "Apollo 11: Lunar Exploration",
+      subject: "Space Science",
+      scenes: [
+        {
+          id: "moon-base",
+          title: "Tranquility Base Landing Site",
+          panorama: "https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?auto=format&fit=crop&w=2000&q=80",
+          hotspots: [
+            { id: "hotspot-flag", title: "American Lunar Flag", text: "The flag has a horizontal telescopic rod along the top because there is no lunar atmosphere or wind to unfurl it.", phi: 1.6, theta: 0.8 },
+            { id: "hotspot-lem", title: "Lunar Module Descent Stage", text: "Gold Kapton thermal foil insulated the craft from extreme thermal shifts.", phi: 1.5, theta: 2.7 }
+          ]
+        }
+      ]
+    };
+
+    let currentRoomCode = '';
+    let studentName = '';
+    let studentId = 'student-' + Math.random().toString(36).substring(2, 9);
+    let isConnectedToTeacher = false;
+    let currentTour = null;
+    let currentScene = null;
+    let activeSpotlightCoords = null;
+    let isVrSplitMode = false;
+    let isGyroscopeActive = false;
+
+    // Homido Grab Optical Calibration Parameters
+    // Homido Grab FOV: 100 degrees; IPD default: 63mm (0.063m in Three.js units)
+    let homidoIPD = 0.063;
+    let homidoFOV = 100;
+    let stereoCamera = null;
+
+    let lon = 0, lat = 0;
+    let isUserInteracting = false;
+    let onPointerDownPointerX = 0, onPointerDownPointerY = 0;
+    let onPointerDownLon = 0, onPointerDownLat = 0;
+
+    let isCameraAnimating = false;
+    let animStartLon = 0, animStartLat = 0;
+    let animTargetLon = 0, animTargetLat = 0;
+    let animStartTime = 0;
+    const ANIM_DURATION = 800;
+
+    // Gyroscope tracking variables
+    let deviceOrientationData = null;
+    let screenOrientation = 0;
+    let yawOffset = 0;
+    const zee = new THREE.Vector3(0, 0, 1);
+    const euler = new THREE.Euler();
+    const q0 = new THREE.Quaternion();
+    const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -PI/2 around X-axis
+
+    let scene, camera, renderer, sphereMesh, textureLoader;
+    let hotspotGroup, impromptuMarker = null;
+
+    let peer = null;
+    let teacherConn = null;
+    let heartbeatInterval = null;
+    let gazeBroadcastInterval = null;
+    let lastSentLon = null, lastSentLat = null;
+    let localBroadcastChannel = null;
+
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        localBroadcastChannel = new BroadcastChannel('expeditions-classroom-sync');
+      }
+    } catch (e) {
+      console.warn('BroadcastChannel not supported in this environment');
+    }
+
+    function safeSetText(id, text) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    }
+
+    function createProceduralPanoTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 2048;
+      canvas.height = 1024;
+      const ctx = canvas.getContext('2d');
+      const grad = ctx.createLinearGradient(0, 0, 0, 1024);
+      grad.addColorStop(0, '#090d16');
+      grad.addColorStop(0.5, '#1e1b4b');
+      grad.addColorStop(1, '#020617');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 2048, 1024);
+
+      ctx.fillStyle = '#ffffff';
+      for (let i = 0; i < 200; i++) {
+        const x = Math.random() * 2048;
+        const y = Math.random() * 1024;
+        const r = Math.random() * 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    function initThreeEngine() {
+      const container = document.getElementById('webgl-canvas-container');
+      if (!container) return;
+      const width = window.innerWidth || 800;
+      const height = window.innerHeight || 600;
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(homidoFOV, width / height, 0.1, 1000);
+      scene.add(camera);
+
+      // StereoCamera tuned for Homido Grab optics
+      stereoCamera = new THREE.StereoCamera();
+      stereoCamera.aspect = 0.5;
+      stereoCamera.eyeSep = homidoIPD;
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(width, height);
+      container.appendChild(renderer.domElement);
+
+      const geometry = new THREE.SphereGeometry(500, 60, 40);
+      geometry.scale(-1, 1, 1);
+      textureLoader = new THREE.TextureLoader();
+      textureLoader.setCrossOrigin('anonymous');
+
+      const material = new THREE.MeshBasicMaterial({ map: createProceduralPanoTexture() });
+      sphereMesh = new THREE.Mesh(geometry, material);
+      scene.add(sphereMesh);
+
+      hotspotGroup = new THREE.Group();
+      scene.add(hotspotGroup);
+
+      setupPointerInteraction(container);
+      window.addEventListener('resize', onWindowResize);
+      updateScreenOrientation();
+      requestAnimationFrame(renderLoop);
+    }
+
+    function setupPointerInteraction(container) {
+      if (!container) return;
+      container.addEventListener('pointerdown', (e) => {
+        isCameraAnimating = false;
+        isUserInteracting = true;
+        onPointerDownPointerX = e.clientX;
+        onPointerDownPointerY = e.clientY;
+        onPointerDownLon = lon;
+        onPointerDownLat = lat;
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!isUserInteracting) return;
+        const deltaX = (e.clientX - onPointerDownPointerX) * 0.18;
+        const deltaY = (e.clientY - onPointerDownPointerY) * 0.18;
+
+        if (isGyroscopeActive) {
+          // Allows horizontal yaw trimming without turning around
+          yawOffset -= THREE.MathUtils.degToRad(deltaX);
+          onPointerDownPointerX = e.clientX;
+        } else {
+          lon = deltaX + onPointerDownLon;
+          lat = deltaY + onPointerDownLat;
+        }
+      });
+
+      window.addEventListener('pointerup', () => { isUserInteracting = false; });
+      window.addEventListener('pointercancel', () => { isUserInteracting = false; });
+    }
+
+    function onWindowResize() {
+      if (!renderer || !camera) return;
+      const w = window.innerWidth || 800;
+      const h = window.innerHeight || 600;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      updateScreenOrientation();
+    }
+
+    function updateScreenOrientation() {
+      if (typeof window.orientation !== 'undefined') {
+        screenOrientation = window.orientation || 0;
+      } else if (screen && screen.orientation && typeof screen.orientation.angle !== 'undefined') {
+        screenOrientation = screen.orientation.angle || 0;
+      } else {
+        screenOrientation = 0;
+      }
+    }
+
+    function setCameraQuaternionFromDevice(quaternion, alpha, beta, gamma, orient) {
+      euler.set(
+        THREE.MathUtils.degToRad(beta),
+        THREE.MathUtils.degToRad(alpha),
+        -THREE.MathUtils.degToRad(gamma),
+        'YXZ'
+      );
+
+      quaternion.setFromEuler(euler);
+      quaternion.multiply(q1);
+      quaternion.multiply(q0.setFromAxisAngle(zee, -THREE.MathUtils.degToRad(orient)));
+      if (yawOffset !== 0) {
+        const yawQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawOffset);
+        quaternion.premultiply(yawQuat);
+      }
+    }
+
+    function renderLoop() {
+      requestAnimationFrame(renderLoop);
+
+      if (isGyroscopeActive && deviceOrientationData && camera) {
+        const alpha = deviceOrientationData.alpha ? deviceOrientationData.alpha : 0;
+        const beta = deviceOrientationData.beta ? deviceOrientationData.beta : 0;
+        const gamma = deviceOrientationData.gamma ? deviceOrientationData.gamma : 0;
+
+        setCameraQuaternionFromDevice(camera.quaternion, alpha, beta, gamma, screenOrientation);
+
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        lat = THREE.MathUtils.radToDeg(Math.asin(Math.max(-1, Math.min(1, forward.y))));
+        lon = THREE.MathUtils.radToDeg(Math.atan2(forward.x, forward.z)) + 180;
+      } else {
+        if (isCameraAnimating) {
+          const elapsed = performance.now() - animStartTime;
+          const progress = Math.min(1, elapsed / ANIM_DURATION);
+          const easeOut = 1 - Math.pow(1 - progress, 3);
+          lon = animStartLon + (animTargetLon - animStartLon) * easeOut;
+      let currentTour = null;
+      let currentScene = null;
+      let activeSpotlightCoords = null;
+      let isVrSplitMode = false;
+      let isGyroscopeActive = false;
+      let wakeLockSentinel = null;
+
+      // Keep screen awake while inside viewer
+      async function requestScreenWakeLock() {
+        if ('wakeLock' in navigator && !wakeLockSentinel) {
+          try {
+            wakeLockSentinel = await navigator.wakeLock.request('screen');
+            wakeLockSentinel.addEventListener('release', () => {
+              wakeLockSentinel = null;
+            });
+          } catch (e) {
+            console.warn('WakeLock unavailable:', e);
+          }
+        }
+      }
+
+      if (impromptuMarker) {
+        const t = performance.now() * 0.003;
+        const pulse = 32 + Math.sin(t * 3) * 6;
+        impromptuMarker.scale.set(pulse, pulse, 1);
+      }
+
+      updateDirectionalAttentionPointers();
+
+      if (isVrSplitMode && renderer && scene && camera && stereoCamera) {
+        renderStereoscopicHomidoGrab();
+      } else if (renderer && scene && camera) {
+        renderer.render(scene, camera);
+      }
+    }
+
+    // Custom Stereoscopic Rendering configured for Homido Grab lenses
+    function renderStereoscopicHomidoGrab() {
+      const w = window.innerWidth || 800;
+      const h = window.innerHeight || 600;
+      const halfW = Math.floor(w / 2);
+
+      stereoCamera.eyeSep = homidoIPD;
+      stereoCamera.update(camera);
+
+      // Left Lens Viewport
+      renderer.setViewport(0, 0, halfW, h);
+      renderer.setScissor(0, 0, halfW, h);
+      renderer.setScissorTest(true);
+      renderer.render(scene, stereoCamera.cameraL);
+
+      // Right Lens Viewport
+      renderer.setViewport(halfW, 0, halfW, h);
+      renderer.setScissor(halfW, 0, halfW, h);
+      renderer.setScissorTest(true);
+      renderer.render(scene, stereoCamera.cameraR);
+
+      renderer.setScissorTest(false);
+    }
+
+    function updateDirectionalAttentionPointers() {
+      const arrowLeft = document.getElementById('arrow-left');
+      const arrowRight = document.getElementById('arrow-right');
+      const arrowUp = document.getElementById('arrow-up');
+      const arrowDown = document.getElementById('arrow-down');
+
+      if (!activeSpotlightCoords || !camera) {
+        if (arrowLeft) arrowLeft.style.opacity = '0';
+        if (arrowRight) arrowRight.style.opacity = '0';
+        if (arrowUp) arrowUp.style.opacity = '0';
+        if (arrowDown) arrowDown.style.opacity = '0';
+        return;
+      }
+
+      const rad = 450;
+      const tPhi = activeSpotlightCoords.phi;
+      const tTheta = activeSpotlightCoords.theta;
+      const targetPos = new THREE.Vector3(
+        rad * Math.sin(tPhi) * Math.sin(tTheta),
+        rad * Math.cos(tPhi),
+        rad * Math.sin(tPhi) * Math.cos(tTheta)
+      );
+
+      const projected = targetPos.clone().project(camera);
+      const isTargetInFront = projected.z < 1;
+      const isVisibleOnScreen = isTargetInFront &&
+        projected.x >= -0.65 && projected.x <= 0.65 &&
+        projected.y >= -0.65 && projected.y <= 0.65;
+
+      if (isVisibleOnScreen) {
+        if (arrowLeft) arrowLeft.style.opacity = '0';
+        if (arrowRight) arrowRight.style.opacity = '0';
+        if (arrowUp) arrowUp.style.opacity = '0';
+        if (arrowDown) arrowDown.style.opacity = '0';
+        return;
+      }
+
+      const targetLat = 90 - (tPhi * (180 / Math.PI));
+      const targetLon = (tTheta * (180 / Math.PI));
+
+      let diffLon = ((targetLon - lon) % 360);
+      if (diffLon > 180) diffLon -= 360;
+      if (diffLon < -180) diffLon += 360;
+
+      const diffLat = targetLat - lat;
+
+      if (Math.abs(diffLon) > 28) {
+        if (diffLon > 0) {
+          if (arrowRight) arrowRight.style.opacity = '1';
+          if (arrowLeft) arrowLeft.style.opacity = '0';
+        } else {
+          if (arrowLeft) arrowLeft.style.opacity = '1';
+          if (arrowRight) arrowRight.style.opacity = '0';
+        }
+      } else {
+        if (arrowLeft) arrowLeft.style.opacity = '0';
+        if (arrowRight) arrowRight.style.opacity = '0';
+      }
+
+      if (Math.abs(diffLat) > 25) {
+        if (diffLat > 0) {
+          if (arrowUp) arrowUp.style.opacity = '1';
+          if (arrowDown) arrowDown.style.opacity = '0';
+        } else {
+          if (arrowDown) arrowDown.style.opacity = '1';
+          if (arrowUp) arrowUp.style.opacity = '0';
+        }
+      } else {
+        if (arrowUp) arrowUp.style.opacity = '0';
+        if (arrowDown) arrowDown.style.opacity = '0';
+      }
+    }
+
+    function smoothPanTo(targetLon, targetLat) {
+      isCameraAnimating = true;
+      animStartTime = performance.now();
+      animStartLon = lon;
+      animStartLat = lat;
+
+      let deltaLon = ((targetLon - animStartLon) % 360);
+      if (deltaLon > 180) deltaLon -= 360;
+      if (deltaLon < -180) deltaLon += 360;
+
+      animTargetLon = animStartLon + deltaLon;
+      animTargetLat = Math.max(-85, Math.min(85, targetLat));
+    }
+
+    function loadScene(sceneData) {
+      if (!sceneData) return;
+      currentScene = sceneData;
+
+      safeSetText('hud-scene-title', `Scene: ${sceneData.title || 'Untitled'}`);
+
+      if (sceneData.panorama && sphereMesh && textureLoader) {
+        textureLoader.load(
+          sceneData.panorama,
+          (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace || undefined;
+            if (sphereMesh && sphereMesh.material) {
+              sphereMesh.material.map = tex;
+              sphereMesh.material.color.set(0xffffff);
+              sphereMesh.material.needsUpdate = true;
+            }
+          },
+          undefined,
+          () => {}
+        );
+      }
+
+      renderHotspots(sceneData.hotspots || []);
+      clearImpromptuMarker();
+      dismissSpotlightCard();
+    }
+
+    function renderHotspots(hotspots) {
+      if (!hotspotGroup) return;
+      while (hotspotGroup.children.length > 0) {
+        const obj = hotspotGroup.children[0];
+        hotspotGroup.remove(obj);
+      }
+
+      (hotspots || []).forEach(h => {
+        const phi = h.phi;
+        const theta = h.theta;
+        const radius = 450;
+
+        const x = radius * Math.sin(phi) * Math.sin(theta);
+        const y = radius * Math.cos(phi);
+        const z = radius * Math.sin(phi) * Math.cos(theta);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(64, 64, 48, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(64, 64, 18, 0, Math.PI * 2);
+        ctx.fill();
+
+        const tex = new THREE.CanvasTexture(canvas);
+        const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.position.set(x, y, z);
+        sprite.scale.set(30, 30, 1);
+        sprite.userData = h;
+
+        hotspotGroup.add(sprite);
+      });
+    }
+
+    function placeImpromptuMarker(phi, theta, title = 'Teacher Spotlight') {
+      clearImpromptuMarker();
+
+      const radius = 450;
+      const x = radius * Math.sin(phi) * Math.sin(theta);
+      const y = radius * Math.cos(phi);
+      const z = radius * Math.sin(phi) * Math.cos(theta);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+
+      ctx.strokeStyle = '#06b6d4';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(64, 64, 50, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#22d3ee';
+      ctx.beginPath();
+      ctx.arc(64, 64, 16, 0, Math.PI * 2);
+      ctx.fill();
+
+      const tex = new THREE.CanvasTexture(canvas);
+      const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+      impromptuMarker = new THREE.Sprite(spriteMat);
+      impromptuMarker.position.set(x, y, z);
+      impromptuMarker.scale.set(34, 34, 1);
+
+      if (scene) scene.add(impromptuMarker);
+      activeSpotlightCoords = { phi, theta };
+      showStudentToast('Teacher spotlighted a point of interest!');
+    }
+
+    function clearImpromptuMarker() {
+      if (impromptuMarker && scene) {
+        scene.remove(impromptuMarker);
+        impromptuMarker = null;
+      }
+      const spotlightCard = document.getElementById('spotlight-card');
+      if (activeSpotlightCoords && (!spotlightCard || !spotlightCard.classList.contains('opacity-100'))) {
+        activeSpotlightCoords = null;
+      }
+    }
+
+    function showSpotlightCard(h) {
+      if (!h) return;
+      activeSpotlightCoords = { phi: h.phi, theta: h.theta, id: h.hotspotId || h.id };
+      safeSetText('spotlight-target-title', h.title || 'Spotlight Target');
+      safeSetText('spotlight-target-text', h.text || 'Observe the detail highlighted by your teacher.');
+
+      const imgContainer = document.getElementById('spotlight-img-container');
+      const targetImg = document.getElementById('spotlight-target-img');
+      const lightboxImg = document.getElementById('lightbox-full-img');
+      const lightboxCaption = document.getElementById('lightbox-caption');
+
+      if (h.image) {
+        if (targetImg) targetImg.src = h.image;
+        if (lightboxImg) lightboxImg.src = h.image;
+        if (lightboxCaption) lightboxCaption.textContent = h.title || '';
+        if (imgContainer) imgContainer.classList.remove('hidden');
+      } else {
+        if (targetImg) targetImg.src = '';
+        if (imgContainer) imgContainer.classList.add('hidden');
+      }
+
+      const card = document.getElementById('spotlight-card');
+      if (card) {
+        card.classList.remove('translate-y-32', 'opacity-0');
+        card.classList.add('translate-y-0', 'opacity-100');
+      }
+
+      showStudentToast(`Teacher Spotlight: ${h.title || 'Target'}`);
+    }
+
+    function dismissSpotlightCard() {
+      const card = document.getElementById('spotlight-card');
+      if (card) {
+        card.classList.add('translate-y-32', 'opacity-0');
+        card.classList.remove('translate-y-0', 'opacity-100');
+      }
+      const imgContainer = document.getElementById('spotlight-img-container');
+      if (imgContainer) imgContainer.classList.add('hidden');
+      activeSpotlightCoords = null;
+    }
+
+    /* ---------------------------------------------------------
+       WebRTC Networking (Student Peer)
+       --------------------------------------------------------- */
+    function initializePeerNetwork(roomCode) {
+      currentRoomCode = roomCode.trim();
+      const teacherPeerId = `teacher-room-${currentRoomCode}`;
+      const errPill = document.getElementById('join-error-pill');
+      const statusPill = document.getElementById('join-status-pill');
+      const btnIcon = document.getElementById('btn-join-icon');
+      const btnText = document.getElementById('btn-join-text');
+
+      if (btnIcon) btnIcon.className = 'fa-solid fa-circle-notch fa-spin';
+      if (btnText) btnText.textContent = 'Connecting to Teacher...';
+      if (errPill) errPill.classList.add('hidden');
+      if (statusPill) {
+        statusPill.classList.remove('hidden');
+        safeSetText('join-status-msg', `1/3: Connecting to WebRTC relay...`);
+      }
+
+      if (peer) {
+        try { peer.destroy(); } catch (e) {}
+      }
+
+      try {
+        peer = new Peer(studentId, {
+          debug: 1,
+          config: {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+          }
+        });
+
+        peer.on('open', (id) => {
+          safeSetText('network-client-id', `ID: ${id}`);
+          if (statusPill) safeSetText('join-status-msg', `2/3: Handshaking with teacher room ${currentRoomCode}...`);
+          connectToTeacherPeer(teacherPeerId);
+        });
+
+        peer.on('error', (err) => {
+          console.warn('Peer error:', err);
+          if (err && err.type === 'peer-unavailable') {
+            if (errPill) {
+              errPill.classList.remove('hidden');
+              safeSetText('join-error-msg', `Teacher room ${currentRoomCode} not found. Is teacher in Presenter Mode?`);
+            }
+            if (statusPill) statusPill.classList.add('hidden');
+            if (btnIcon) btnIcon.className = 'fa-solid fa-satellite-dish';
+            if (btnText) btnText.textContent = 'Enter Expedition';
+          }
+          setupLocalChannelSync();
+        });
+      } catch (err) {
+        console.warn('PeerJS init failed:', err);
+        setupLocalChannelSync();
+      }
+
+      setupLocalChannelSync();
+    }
+
+    function connectToTeacherPeer(teacherPeerId) {
+      if (!peer || peer.destroyed) return;
+      try {
+        teacherConn = peer.connect(teacherPeerId, { reliable: true });
+
+        teacherConn.on('open', () => {
+          const statusPill = document.getElementById('join-status-pill');
+          if (statusPill) safeSetText('join-status-msg', `3/3: Synchronizing 3D panorama...`);
+          onTeacherConnected();
+          sendHeartbeat();
+        });
+
+        teacherConn.on('data', (data) => {
+          handleTeacherIncomingPayload(data);
+        });
+
+        teacherConn.on('close', () => {
+          isConnectedToTeacher = false;
+          showStudentToast('Teacher disconnected.');
+        });
+
+        teacherConn.on('error', (err) => {
+          console.warn('Teacher connection error:', err);
+        });
+      } catch (e) {
+        console.warn('Connect error:', e);
+      }
+
+      setTimeout(() => {
+        if (!isConnectedToTeacher && peer && !peer.destroyed) {
+          connectToTeacherPeer(teacherPeerId);
+        }
+      }, 4000);
+    }
+
+    function onTeacherConnected() {
+      isConnectedToTeacher = true;
+      const screenJoin = document.getElementById('screen-join');
+      const screenHud = document.getElementById('screen-hud');
+      if (screenJoin) screenJoin.classList.add('hidden');
+      if (screenHud) screenHud.classList.remove('hidden');
+      safeSetText('hud-room-code', `ROOM ${currentRoomCode}`);
+
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = setInterval(sendHeartbeat, 5000);
+      sendHeartbeat();
+
+      clearInterval(gazeBroadcastInterval);
+      gazeBroadcastInterval = setInterval(sendGazeTelemetry, 66);
+
+      showStudentToast(`Connected to Room ${currentRoomCode}!`);
+    }
+
+    function sendHeartbeat() {
+      const payload = {
+        type: 'STUDENT_JOIN',
+        roomCode: currentRoomCode,
+        studentId: studentId,
+        studentName: studentName || 'Student'
+      };
+
+      if (teacherConn && teacherConn.open) {
+        try { teacherConn.send(payload); } catch (e) {}
+      }
+      if (localBroadcastChannel) {
+        try { localBroadcastChannel.postMessage(payload); } catch (e) {}
+      }
+    }
+
+    function sendGazeTelemetry() {
+      if (!isConnectedToTeacher) return;
+
+      const roundedLon = Math.round(lon * 10) / 10;
+      const roundedLat = Math.round(lat * 10) / 10;
+
+      if (lastSentLon !== null && Math.abs(roundedLon - lastSentLon) < 0.2 && Math.abs(roundedLat - lastSentLat) < 0.2) {
+        return;
+      }
+
+      lastSentLon = roundedLon;
+      lastSentLat = roundedLat;
+
+      const payload = {
+        type: 'STUDENT_GAZE',
+        roomCode: currentRoomCode,
+        studentId: studentId,
+        studentName: studentName || 'Student',
+        lon: roundedLon,
+        lat: roundedLat
+      };
+
+      if (teacherConn && teacherConn.open) {
+        try { teacherConn.send(payload); } catch (e) {}
+      }
+      if (localBroadcastChannel) {
+        try { localBroadcastChannel.postMessage(payload); } catch (e) {}
+      }
+    }
+
+    function setupLocalChannelSync() {
+      if (!localBroadcastChannel) return;
+      localBroadcastChannel.onmessage = (event) => {
+        const data = event.data;
+        if (!data || (data.roomCode && data.roomCode !== currentRoomCode)) return;
+        handleTeacherIncomingPayload(data);
+      };
+    }
+
+    function handleTeacherIncomingPayload(data) {
+      if (!data) return;
+
+      if (data.type === 'TEACHER_CHANGE_TOUR' && data.tour) {
+        currentTour = data.tour;
+        safeSetText('hud-tour-title', currentTour.title || 'Tour');
+        if (currentTour.scenes && currentTour.scenes[0]) {
+          loadScene(currentTour.scenes[0]);
+        }
+      } else if (data.type === 'TEACHER_CHANGE_SCENE' && data.sceneData) {
+        loadScene(data.sceneData);
+      } else if (data.type === 'TEACHER_SPOTLIGHT') {
+        showSpotlightCard(data);
+      } else if (data.type === 'TEACHER_CLEAR_SPOTLIGHT') {
+        dismissSpotlightCard();
+      } else if (data.type === 'TEACHER_IMPROMPTU_PING') {
+        placeImpromptuMarker(data.phi, data.theta, data.title);
+      } else if (data.type === 'TEACHER_CLEAR_IMPROMPTU_PING') {
+        clearImpromptuMarker();
+        const card = document.getElementById('spotlight-card');
+        if (!card || card.classList.contains('opacity-0')) {
+          activeSpotlightCoords = null;
+        }
+      } else if (data.type === 'TEACHER_CATCHUP_STATE') {
+        if (data.tour) {
+          currentTour = data.tour;
+          safeSetText('hud-tour-title', currentTour.title || 'Tour');
+        }
+        if (data.scene) {
+          loadScene(data.scene);
+        } else if (data.tour && data.tour.scenes && data.tour.scenes[0]) {
+          loadScene(data.tour.scenes[0]);
+        }
+      }
+    }
+
+    /* ---------------------------------------------------------
+       Sensors & Gyroscope Initialization (Direct User Tap)
+       --------------------------------------------------------- */
+    function requestMotionPermissionDirect(callback) {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+          .then((state) => {
+            if (state === 'granted') {
+              enableGyroscopeTracking();
+              if (callback) callback(true);
+            } else {
+              showMotionPermissionModal('Safari recorded this permission as denied.');
+              if (callback) callback(false);
+            }
+          })
+          .catch((err) => {
+            console.warn('requestPermission error:', err);
+            showMotionPermissionModal('Safari requires permission to track headset motion.');
+            if (callback) callback(false);
+          });
+      } else if (typeof window.DeviceOrientationEvent !== 'undefined') {
+        enableGyroscopeTracking();
+        if (callback) callback(true);
+      } else {
+        showStudentToast('Motion sensors not supported on this device.');
+        if (callback) callback(false);
+      }
+    }
+
+    function toggleGyroscopeTracking() {
+      if (isGyroscopeActive) {
+        disableGyroscopeTracking();
+        return;
+      }
+      requestMotionPermissionDirect();
+    }
+
+    function showMotionPermissionModal(reason) {
+      const modal = document.getElementById('motion-permission-modal');
+      const reasonEl = document.getElementById('motion-modal-reason');
+      if (reasonEl && reason) reasonEl.textContent = reason;
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function enableGyroscopeTracking() {
+      isGyroscopeActive = true;
+      deviceOrientationData = null;
+      yawOffset = 0;
+
+      window.addEventListener('deviceorientation', handleOrientation, true);
+      window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+      window.addEventListener('orientationchange', updateScreenOrientation, false);
+
+      const lbl = document.getElementById('lbl-gyro');
+      if (lbl) lbl.textContent = 'Touch Look';
+
+      const btn = document.getElementById('btn-toggle-gyro');
+      if (btn) {
+        btn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-400');
+        btn.classList.remove('bg-slate-900/90', 'text-slate-300');
+      }
+
+      showStudentToast('Motion Look active! Move your phone in space.');
+    }
+
+    function disableGyroscopeTracking() {
+      isGyroscopeActive = false;
+      deviceOrientationData = null;
+
+      window.removeEventListener('deviceorientation', handleOrientation, true);
+      window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
+      window.removeEventListener('orientationchange', updateScreenOrientation, false);
+
+      const lbl = document.getElementById('lbl-gyro');
+      if (lbl) lbl.textContent = 'Motion Look';
+
+      const btn = document.getElementById('btn-toggle-gyro');
+      if (btn) {
+        btn.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-400');
+        btn.classList.add('bg-slate-900/90', 'text-slate-300');
+      }
+
+      showStudentToast('Switched to drag / touch look.');
+    }
+
+    function handleOrientation(event) {
+      if (!isGyroscopeActive || !event) return;
+      if (event.alpha !== null && event.beta !== null && event.gamma !== null) {
+        deviceOrientationData = {
+          alpha: event.alpha,
+          beta: event.beta,
+          gamma: event.gamma
+        };
+      }
+    }
+
+    // Enter Fullscreen and Lock Landscape for Homido Grab Headset
+    function requestLandscapeAndFullscreen() {
+      const docEl = document.documentElement;
+
+      // 1. Request fullscreen
+      if (docEl.requestFullscreen) {
+        docEl.requestFullscreen().catch(() => {});
+      } else if (docEl.webkitRequestFullscreen) {
+        docEl.webkitRequestFullscreen();
+      }
+
+      // 2. Lock screen orientation to landscape
+      if (screen && screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(() => {
+          // Fallback handled by #rotate-device-prompt CSS overlay on iOS
+        });
+      }
+    }
+
+    function showStudentToast(msg) {
+      const toast = document.getElementById('student-toast');
+      if (!toast) return;
+      toast.textContent = msg;
+      toast.classList.remove('opacity-0');
+      setTimeout(() => { toast.classList.add('opacity-0'); }, 3000);
+    }
+
+    /* ---------------------------------------------------------
+       UI Setup & Homido Calibration Controls
+       --------------------------------------------------------- */
+    function setupUIHandlers() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomParam = urlParams.get('room');
+      const input = document.getElementById('input-room-code');
+      if (roomParam && input) {
+        input.value = roomParam.trim();
+      } else if (input && !input.value) {
+        input.value = '48291';
+      }
+
+      const randomNum = Math.floor(1 + Math.random() * 99);
+      studentName = 'Student ' + randomNum;
+
+      // Join Button: Requests Motion + Fullscreen + Landscape directly in user gesture
+      const btnJoin = document.getElementById('btn-join-room');
+      if (btnJoin) {
+        btnJoin.onclick = () => {
+          const inputCode = document.getElementById('input-room-code');
+          const codeInput = inputCode ? inputCode.value.trim() : '48291';
+
+          if (!codeInput || codeInput.length < 4) {
+            const pill = document.getElementById('join-error-pill');
+            if (pill) pill.classList.remove('hidden');
+            safeSetText('join-error-msg', 'Please enter a valid 5-digit room code.');
+            return;
+          }
+
+          // Trigger landscape & fullscreen right inside the tap
+          requestLandscapeAndFullscreen();
+
+          // Immediately prompt iOS for gyroscope permission inside user gesture
+          requestMotionPermissionDirect((granted) => {
+            initializePeerNetwork(codeInput);
+          });
+        };
+      }
+
+      const inputRoomCode = document.getElementById('input-room-code');
+      if (inputRoomCode) {
+        inputRoomCode.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            const btn = document.getElementById('btn-join-room');
+            if (btn) btn.click();
+          }
+        });
+      }
+
+      const btnQuickSample = document.getElementById('btn-quick-sample-tour');
+      if (btnQuickSample) {
+        btnQuickSample.onclick = () => {
+          requestLandscapeAndFullscreen();
+          requestMotionPermissionDirect();
+          currentTour = DEFAULT_PRESET_TOUR;
+          currentRoomCode = 'PREVIEW';
+          onTeacherConnected();
+          loadScene(currentTour.scenes[0]);
+        };
+      }
+
+      const btnLeave = document.getElementById('btn-leave-room');
+      if (btnLeave) {
+        btnLeave.onclick = () => {
+      function onTeacherConnected() {
+        isConnectedToTeacher = true;
+        requestScreenWakeLock();
+        const screenJoin = document.getElementById('screen-join');
+        const screenHud = document.getElementById('screen-hud');
+          const screenJoin = document.getElementById('screen-join');
+          if (screenHud) screenHud.classList.add('hidden');
+          if (screenJoin) screenJoin.classList.remove('hidden');
+          const icon = document.getElementById('btn-join-icon');
+          const text = document.getElementById('btn-join-text');
+          if (icon) icon.className = 'fa-solid fa-satellite-dish';
+          if (text) text.textContent = 'Enter Expedition';
+        };
+      }
+
+      const btnGyro = document.getElementById('btn-toggle-gyro');
+      if (btnGyro) {
+        btnGyro.onclick = () => toggleGyroscopeTracking();
+      }
+
+      // Homido Grab VR Split Mode Toggle
+      const btnVr = document.getElementById('btn-toggle-cardboard-vr');
+      if (btnVr) {
+        btnVr.onclick = () => {
+          isVrSplitMode = !isVrSplitMode;
+          document.body.classList.toggle('vr-split-active', isVrSplitMode);
+
+          const hudTopBar = document.getElementById('hud-top-bar');
+
+          if (isVrSplitMode) {
+            if (!isGyroscopeActive) requestMotionPermissionDirect();
+            requestLandscapeAndFullscreen();
+            safeSetText('lbl-vr-mode', 'Exit VR');
+            btnVr.classList.replace('bg-indigo-600', 'bg-purple-600');
+            showStudentToast('Homido Grab VR active. Insert phone into viewer.');
+          } else {
+            safeSetText('lbl-vr-mode', 'Homido VR');
+            btnVr.classList.replace('bg-purple-600', 'bg-indigo-600');
+            onWindowResize();
+            showStudentToast('Exited VR Mode.');
+          }
+        };
+      }
+
+      // Homido IPD Optical Calibration Slider
+      const btnOptics = document.getElementById('btn-toggle-optics');
+      const modalOptics = document.getElementById('homido-optics-modal');
+      const btnCloseOptics = document.getElementById('btn-close-optics');
+      const sliderIPD = document.getElementById('slider-ipd');
+
+      if (btnOptics && modalOptics) {
+        btnOptics.onclick = () => modalOptics.classList.toggle('hidden');
+      }
+      if (btnCloseOptics && modalOptics) {
+        btnCloseOptics.onclick = () => modalOptics.classList.add('hidden');
+      }
+      if (sliderIPD) {
+        sliderIPD.addEventListener('input', (e) => {
+          const mm = parseFloat(e.target.value);
+          homidoIPD = mm / 1000; // convert mm to Three.js units (meters)
+          safeSetText('lbl-ipd-val', `${mm.toFixed(1)} mm`);
+          if (stereoCamera) {
+            stereoCamera.eyeSep = homidoIPD;
+          }
+        });
+      }
+
+      const btnFullscreen = document.getElementById('btn-toggle-fullscreen');
+      if (btnFullscreen) {
+        btnFullscreen.onclick = () => {
+          requestLandscapeAndFullscreen();
+        };
+      }
+
+      const btnDismissSpotlight = document.getElementById('btn-dismiss-spotlight-card');
+      if (btnDismissSpotlight) {
+        btnDismissSpotlight.onclick = () => dismissSpotlightCard();
+      }
+
+      const btnGrantDirect = document.getElementById('btn-grant-motion-direct');
+      if (btnGrantDirect) {
+        btnGrantDirect.onclick = () => {
+          requestMotionPermissionDirect((granted) => {
+            if (granted) {
+              const modal = document.getElementById('motion-permission-modal');
+              if (modal) modal.classList.add('hidden');
+            }
+          });
+        };
+      }
+
+      const btnDismissMotion = document.getElementById('btn-dismiss-motion-modal');
+      if (btnDismissMotion) {
+        btnDismissMotion.onclick = () => {
+          const modal = document.getElementById('motion-permission-modal');
+          if (modal) modal.classList.add('hidden');
+        };
+      }
+
+      const btnAlignSpotlight = document.getElementById('btn-align-view-spotlight');
+      if (btnAlignSpotlight) {
+        btnAlignSpotlight.onclick = () => {
+          if (!activeSpotlightCoords) return;
+          const targetLat = 90 - (activeSpotlightCoords.phi * (180 / Math.PI));
+          const targetLon = activeSpotlightCoords.theta * (180 / Math.PI);
+          smoothPanTo(targetLon, targetLat);
+        };
+      }
+
+      const spotlightImgContainer = document.getElementById('spotlight-img-container');
+      const lightboxModal = document.getElementById('spotlight-lightbox-modal');
+      const btnCloseLightbox = document.getElementById('btn-close-lightbox');
+
+      if (spotlightImgContainer && lightboxModal) {
+        spotlightImgContainer.onclick = () => {
+          lightboxModal.classList.remove('hidden');
+        };
+      }
+
+      if (btnCloseLightbox && lightboxModal) {
+        btnCloseLightbox.onclick = () => {
+          lightboxModal.classList.add('hidden');
+        };
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initThreeEngine();
+      setupUIHandlers();
+      loadScene(DEFAULT_PRESET_TOUR.scenes[0]);
+    });
+  </script>
+</body>
+</html>

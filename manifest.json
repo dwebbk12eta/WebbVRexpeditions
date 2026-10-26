@@ -1,0 +1,22 @@
+{
+"name": "Expeditions VR Explorer",
+"short_name": "Expeditions",
+"description": "Virtual Reality Classroom Field Trip Explorer",
+"start_url": "./student.html",
+"display": "fullscreen",
+"orientation": "landscape",
+"background_color": "#000000",
+"theme_color": "#020617",
+"icons": [
+{
+"src": "https://placehold.co/192x192/4338ca/ffffff?text=VR",
+"sizes": "192x192",
+"type": "image/png"
+},
+{
+"src": "https://placehold.co/512x512/4338ca/ffffff?text=Expeditions",
+"sizes": "512x512",
+"type": "image/png"
+}
+]
+}
