@@ -72,9 +72,9 @@
       top: 0;
       bottom: 0;
       left: 50%;
-      width: 2px;
+      width: 4px;
       transform: translateX(-50%);
-      background: rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.4);
       z-index: 35;
       pointer-events: none;
       display: none;
@@ -85,15 +85,44 @@
       position: absolute;
       left: 50%;
       transform: translateX(-50%);
-      width: 10px;
-      height: 10px;
-      border: 2px solid rgba(255, 255, 255, 0.5);
+      width: 12px;
+      height: 12px;
+      background: #ffffff;
+      border: 2px solid #000000;
       border-radius: 50%;
     }
-    #vr-center-separator::before { top: 20px; }
-    #vr-center-separator::after { bottom: 20px; }
+    #vr-center-separator::before { top: 18px; }
+    #vr-center-separator::after { bottom: 18px; }
 
     .vr-split-active #vr-center-separator {
+      display: block;
+    }
+
+    /* Calibration Reticles for Eye Alignment */
+    .calibration-target {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 32px;
+      height: 32px;
+      border: 2px dashed rgba(245, 158, 11, 0.8);
+      border-radius: 50%;
+      pointer-events: none;
+      display: none;
+      z-index: 36;
+    }
+    .calibration-target::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 6px;
+      height: 6px;
+      background: #f59e0b;
+      border-radius: 50%;
+    }
+    .show-calibration .calibration-target {
       display: block;
     }
 
@@ -113,8 +142,12 @@
   <!-- 3D WEBGL CANVAS -->
   <div id="webgl-canvas-container"></div>
 
-  <!-- HOMIDO GRAB CENTER DIVIDER -->
+  <!-- HOMIDO GRAB PHYSICAL CENTER DIVIDER -->
   <div id="vr-center-separator"></div>
+
+  <!-- STEREO CALIBRATION CROSSHAIRS -->
+  <div id="calib-left" class="calibration-target" style="left: 25%;"></div>
+  <div id="calib-right" class="calibration-target" style="left: 75%;"></div>
 
   <!-- ROTATE TO LANDSCAPE OVERLAY (for Cardboard/Homido Grab) -->
   <div id="rotate-device-prompt" class="fixed inset-0 z-50 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center space-y-4">
@@ -167,7 +200,7 @@
             <i class="fa-solid fa-glasses text-indigo-400 text-sm"></i>
             <div>
               <p class="text-xs font-bold text-white">Viewer Profile</p>
-              <p class="text-[10px] text-slate-400">Optimized for Homido Grab (100° FOV, 63mm IPD)</p>
+              <p class="text-[10px] text-slate-400">Calibrated for Homido Grab (Zero-Parallax Monoscopic Stereo)</p>
             </div>
           </div>
           <span class="text-[10px] font-mono font-bold text-indigo-300 bg-indigo-950/80 border border-indigo-500/30 px-2 py-1 rounded-lg">Homido</span>
@@ -236,7 +269,7 @@
         </button>
 
         <!-- Viewer Optical Tuning Button -->
-        <button id="btn-toggle-optics" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 w-8 h-8 rounded-xl flex items-center justify-center transition active:scale-95 backdrop-blur-md" title="Adjust Homido Grab Lens IPD">
+        <button id="btn-toggle-optics" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 w-8 h-8 rounded-xl flex items-center justify-center transition active:scale-95 backdrop-blur-md" title="Calibrate Homido Optics">
           <i class="fa-solid fa-sliders text-xs"></i>
         </button>
 
@@ -247,26 +280,44 @@
     </header>
 
     <!-- OPTICAL CALIBRATION MODAL FOR HOMIDO GRAB -->
-    <div id="homido-optics-modal" class="pointer-events-auto fixed top-16 right-4 z-40 bg-slate-950/95 border border-indigo-500/40 rounded-2xl p-4 shadow-2xl backdrop-blur-xl w-72 space-y-3 hidden">
+    <div id="homido-optics-modal" class="pointer-events-auto fixed top-16 right-4 z-40 bg-slate-950/95 border border-indigo-500/40 rounded-2xl p-4 shadow-2xl backdrop-blur-xl w-80 space-y-4 hidden">
       <div class="flex items-center justify-between border-b border-slate-800 pb-2">
         <span class="text-xs font-bold text-white flex items-center gap-1.5">
           <i class="fa-solid fa-glasses text-indigo-400"></i>
-          <span>Homido Grab Optics</span>
+          <span>Homido Grab Alignment</span>
         </span>
         <button id="btn-close-optics" class="text-slate-400 hover:text-white text-xs p-1">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
 
+      <!-- Live Alignment Slider -->
       <div class="space-y-2">
         <div class="flex justify-between text-[11px]">
-          <span class="text-slate-300">Interpupillary (IPD):</span>
-          <span id="lbl-ipd-val" class="font-mono text-indigo-400 font-bold">63 mm</span>
+          <span class="text-slate-300">Lens Separation (IPD Offset):</span>
+          <span id="lbl-optical-offset" class="font-mono text-indigo-400 font-bold">0 px</span>
         </div>
-        <input type="range" id="slider-ipd" min="54" max="72" value="63" step="0.5" class="w-full accent-indigo-500">
-        <p class="text-[10px] text-slate-500 leading-tight">
-          Adjust if you experience double vision or eye strain in your Homido Grab headset.
+        <input type="range" id="slider-optical-offset" min="-60" max="60" value="0" step="1" class="w-full accent-indigo-500">
+        <p class="text-[10px] text-slate-400 leading-tight">
+          Adjust while looking through your Homido Grab until the two amber circles snap into a single, razor-sharp view.
         </p>
+      </div>
+
+      <!-- Field of View Slider -->
+      <div class="space-y-2">
+        <div class="flex justify-between text-[11px]">
+          <span class="text-slate-300">Optical Zoom (FOV):</span>
+          <span id="lbl-fov-val" class="font-mono text-indigo-400 font-bold">92°</span>
+        </div>
+        <input type="range" id="slider-fov" min="75" max="105" value="92" step="1" class="w-full accent-indigo-500">
+        <p class="text-[10px] text-slate-400 leading-tight">
+          Expand or contract the image to match your phone screen size.
+        </p>
+      </div>
+
+      <div class="pt-1 flex items-center justify-between">
+        <button id="btn-reset-optics" class="text-[10px] text-slate-400 hover:text-white transition">Reset to Defaults</button>
+        <button id="btn-toggle-crosshairs" class="text-[10px] bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/40 px-2.5 py-1 rounded-lg">Hide Alignment Dots</button>
       </div>
     </div>
 
@@ -281,19 +332,6 @@
           <p id="motion-modal-reason" class="text-xs text-slate-400 leading-relaxed">
             Safari requires permission to use your device's gyroscope.
           </p>
-        </div>
-        
-        <div id="motion-safari-help" class="hidden p-3 bg-slate-950/80 border border-amber-500/30 text-amber-200 text-[11px] rounded-xl text-left space-y-1">
-          <p class="font-bold flex items-center gap-1.5 text-amber-400">
-            <i class="fa-solid fa-triangle-exclamation text-xs"></i>
-            <span>Safari Permission Latched Denied:</span>
-          </p>
-          <p class="text-slate-300">Apple locks motion once dismissed. To reset:</p>
-          <ol class="list-decimal list-inside space-y-0.5 text-slate-400 text-[10px]">
-            <li>Close this tab.</li>
-            <li>Open this URL in a <strong>New Private Tab</strong>.</li>
-            <li>Tap <strong>Allow</strong> when the iOS prompt appears.</li>
-          </ol>
         </div>
 
         <div class="space-y-2 pt-2">
@@ -414,10 +452,12 @@
     let isGyroscopeActive = false;
     let wakeLockSentinel = null;
 
-    // Homido Grab Optical Calibration Parameters (100° FOV, 63mm IPD default)
-    let homidoIPD = 0.063;
-    let homidoFOV = 100;
-    let stereoCamera = null;
+    /* -------------------------------------------------------------
+       Homido Grab Optical Calibration (Saved in LocalStorage)
+       ------------------------------------------------------------- */
+    let opticalPixelOffset = parseInt(localStorage.getItem('homido_optical_offset') || '0', 10);
+    let userFov = parseInt(localStorage.getItem('homido_fov') || '92', 10);
+    let showCalibrationCrosshairs = true;
 
     let lon = 0, lat = 0;
     let isUserInteracting = false;
@@ -507,12 +547,8 @@
       const height = window.innerHeight || 600;
 
       scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(homidoFOV, width / height, 0.1, 1000);
+      camera = new THREE.PerspectiveCamera(userFov, width / height, 0.1, 1000);
       scene.add(camera);
-
-      stereoCamera = new THREE.StereoCamera();
-      stereoCamera.aspect = 0.5;
-      stereoCamera.eyeSep = homidoIPD;
 
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -534,6 +570,7 @@
       setupPointerInteraction(container);
       window.addEventListener('resize', onWindowResize);
       updateScreenOrientation();
+      updateCalibrationTargetPositions();
       requestAnimationFrame(renderLoop);
     }
 
@@ -570,10 +607,17 @@
       if (!renderer || !camera) return;
       const w = window.innerWidth || 800;
       const h = window.innerHeight || 600;
-      camera.aspect = w / h;
+
+      if (isVrSplitMode) {
+        camera.aspect = (w / 2) / h;
+      } else {
+        camera.aspect = w / h;
+      }
+      camera.fov = userFov;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
       updateScreenOrientation();
+      updateCalibrationTargetPositions();
     }
 
     function updateScreenOrientation() {
@@ -646,34 +690,54 @@
 
       updateDirectionalAttentionPointers();
 
-      if (isVrSplitMode && renderer && scene && camera && stereoCamera) {
-        renderStereoscopicHomidoGrab();
+      if (isVrSplitMode && renderer && scene && camera) {
+        renderHomidoTrueStereo();
       } else if (renderer && scene && camera) {
+        renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+        renderer.setScissorTest(false);
         renderer.render(scene, camera);
       }
     }
 
-    function renderStereoscopicHomidoGrab() {
+    /**
+     * Homido Grab Monoscopic Split-Screen Engine (No Fake Parallax Blur)
+     * Renders two identical, zero-parallax viewports shifted horizontally
+     * by `opticalPixelOffset` to match the physical distance between the lenses.
+     */
+    function renderHomidoTrueStereo() {
       const w = window.innerWidth || 800;
       const h = window.innerHeight || 600;
       const halfW = Math.floor(w / 2);
 
-      stereoCamera.eyeSep = homidoIPD;
-      stereoCamera.update(camera);
-
-      // Left Eye
-      renderer.setViewport(0, 0, halfW, h);
+      // Left Eye Viewport: Center shifted by -opticalPixelOffset
+      const leftX = -opticalPixelOffset;
+      renderer.setViewport(leftX, 0, halfW, h);
       renderer.setScissor(0, 0, halfW, h);
       renderer.setScissorTest(true);
-      renderer.render(scene, stereoCamera.cameraL);
+      renderer.render(scene, camera);
 
-      // Right Eye
-      renderer.setViewport(halfW, 0, halfW, h);
+      // Right Eye Viewport: Center shifted by +opticalPixelOffset
+      const rightX = halfW + opticalPixelOffset;
+      renderer.setViewport(rightX, 0, halfW, h);
       renderer.setScissor(halfW, 0, halfW, h);
       renderer.setScissorTest(true);
-      renderer.render(scene, stereoCamera.cameraR);
+      renderer.render(scene, camera);
 
       renderer.setScissorTest(false);
+    }
+
+    function updateCalibrationTargetPositions() {
+      const w = window.innerWidth || 800;
+      const leftTarget = document.getElementById('calib-left');
+      const rightTarget = document.getElementById('calib-right');
+
+      if (!leftTarget || !rightTarget) return;
+
+      const leftCenter = (w / 4) - opticalPixelOffset;
+      const rightCenter = (3 * w / 4) + opticalPixelOffset;
+
+      leftTarget.style.left = `${leftCenter}px`;
+      rightTarget.style.left = `${rightCenter}px`;
     }
 
     function updateDirectionalAttentionPointers() {
@@ -1339,29 +1403,92 @@
             onWindowResize();
             showStudentToast('Exited VR Mode.');
           }
+          onWindowResize();
         };
       }
 
+      /* Optics & Calibration Handlers */
       const btnOptics = document.getElementById('btn-toggle-optics');
       const modalOptics = document.getElementById('homido-optics-modal');
       const btnCloseOptics = document.getElementById('btn-close-optics');
-      const sliderIPD = document.getElementById('slider-ipd');
+      const sliderOpticalOffset = document.getElementById('slider-optical-offset');
+      const sliderFov = document.getElementById('slider-fov');
+      const btnResetOptics = document.getElementById('btn-reset-optics');
+      const btnToggleCrosshairs = document.getElementById('btn-toggle-crosshairs');
 
       if (btnOptics && modalOptics) {
-        btnOptics.onclick = () => modalOptics.classList.toggle('hidden');
+        btnOptics.onclick = () => {
+          modalOptics.classList.toggle('hidden');
+          const isVisible = !modalOptics.classList.contains('hidden');
+          if (isVisible && isVrSplitMode && showCalibrationCrosshairs) {
+            document.body.classList.add('show-calibration');
+          } else {
+            document.body.classList.remove('show-calibration');
+          }
+        };
       }
+
       if (btnCloseOptics && modalOptics) {
-        btnCloseOptics.onclick = () => modalOptics.classList.add('hidden');
+        btnCloseOptics.onclick = () => {
+          modalOptics.classList.add('hidden');
+          document.body.classList.remove('show-calibration');
+        };
       }
-      if (sliderIPD) {
-        sliderIPD.addEventListener('input', (e) => {
-          const mm = parseFloat(e.target.value);
-          homidoIPD = mm / 1000;
-          safeSetText('lbl-ipd-val', `${mm.toFixed(1)} mm`);
-          if (stereoCamera) {
-            stereoCamera.eyeSep = homidoIPD;
+
+      if (sliderOpticalOffset) {
+        sliderOpticalOffset.value = opticalPixelOffset;
+        safeSetText('lbl-optical-offset', `${opticalPixelOffset} px`);
+        sliderOpticalOffset.addEventListener('input', (e) => {
+          opticalPixelOffset = parseInt(e.target.value, 10);
+          safeSetText('lbl-optical-offset', `${opticalPixelOffset} px`);
+          localStorage.setItem('homido_optical_offset', opticalPixelOffset);
+          updateCalibrationTargetPositions();
+        });
+      }
+
+      if (sliderFov) {
+        sliderFov.value = userFov;
+        safeSetText('lbl-fov-val', `${userFov}°`);
+        sliderFov.addEventListener('input', (e) => {
+          userFov = parseInt(e.target.value, 10);
+          safeSetText('lbl-fov-val', `${userFov}°`);
+          localStorage.setItem('homido_fov', userFov);
+          if (camera) {
+            camera.fov = userFov;
+            camera.updateProjectionMatrix();
           }
         });
+      }
+
+      if (btnResetOptics) {
+        btnResetOptics.onclick = () => {
+          opticalPixelOffset = 0;
+          userFov = 92;
+          if (sliderOpticalOffset) sliderOpticalOffset.value = 0;
+          if (sliderFov) sliderFov.value = 92;
+          safeSetText('lbl-optical-offset', '0 px');
+          safeSetText('lbl-fov-val', '92°');
+          localStorage.removeItem('homido_optical_offset');
+          localStorage.removeItem('homido_fov');
+          if (camera) {
+            camera.fov = 92;
+            camera.updateProjectionMatrix();
+          }
+          updateCalibrationTargetPositions();
+        };
+      }
+
+      if (btnToggleCrosshairs) {
+        btnToggleCrosshairs.onclick = () => {
+          showCalibrationCrosshairs = !showCalibrationCrosshairs;
+          if (showCalibrationCrosshairs) {
+            document.body.classList.add('show-calibration');
+            btnToggleCrosshairs.textContent = 'Hide Alignment Dots';
+          } else {
+            document.body.classList.remove('show-calibration');
+            btnToggleCrosshairs.textContent = 'Show Alignment Dots';
+          }
+        };
       }
 
       const btnFullscreen = document.getElementById('btn-toggle-fullscreen');
