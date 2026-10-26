@@ -2,7 +2,7 @@
 "name": "Expeditions VR Explorer",
 "short_name": "Expeditions",
 "description": "Virtual Reality Classroom Field Trip Explorer",
-"start_url": "./student.html",
+"start_url": "./index.html",
 "display": "fullscreen",
 "orientation": "landscape",
 "background_color": "#000000",
