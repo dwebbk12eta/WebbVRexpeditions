@@ -442,9 +442,11 @@
     };
 
     let currentRoomCode = '48291';
-    let studentName = '';
-    let studentId = 'student-' + Math.random().toString(36).substring(2, 9);
+    let studentNumber = Math.floor(1 + Math.random() * 999);
+    let studentName = 'Student ' + studentNumber;
+    let studentId = 'student-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now().toString(36);
     let isConnectedToTeacher = false;
+    let isConnecting = false;
     let currentTour = null;
     let currentScene = null;
     let activeSpotlightCoords = null;
@@ -452,9 +454,7 @@
     let isGyroscopeActive = false;
     let wakeLockSentinel = null;
 
-    /* -------------------------------------------------------------
-       Homido Grab Optical Calibration (Saved in LocalStorage)
-       ------------------------------------------------------------- */
+    /* Homido Grab Optical Calibration */
     let opticalPixelOffset = parseInt(localStorage.getItem('homido_optical_offset') || '0', 10);
     let userFov = parseInt(localStorage.getItem('homido_fov') || '92', 10);
     let showCalibrationCrosshairs = true;
@@ -486,6 +486,7 @@
     let teacherConn = null;
     let heartbeatInterval = null;
     let gazeBroadcastInterval = null;
+    let connectionTimeoutTimer = null;
     let lastSentLon = null, lastSentLat = null;
     let localBroadcastChannel = null;
 
@@ -699,24 +700,19 @@
       }
     }
 
-    /**
-     * Homido Grab Monoscopic Split-Screen Engine (No Fake Parallax Blur)
-     * Renders two identical, zero-parallax viewports shifted horizontally
-     * by `opticalPixelOffset` to match the physical distance between the lenses.
-     */
     function renderHomidoTrueStereo() {
       const w = window.innerWidth || 800;
       const h = window.innerHeight || 600;
       const halfW = Math.floor(w / 2);
 
-      // Left Eye Viewport: Center shifted by -opticalPixelOffset
+      // Left Eye Viewport
       const leftX = -opticalPixelOffset;
       renderer.setViewport(leftX, 0, halfW, h);
       renderer.setScissor(0, 0, halfW, h);
       renderer.setScissorTest(true);
       renderer.render(scene, camera);
 
-      // Right Eye Viewport: Center shifted by +opticalPixelOffset
+      // Right Eye Viewport
       const rightX = halfW + opticalPixelOffset;
       renderer.setViewport(rightX, 0, halfW, h);
       renderer.setScissor(halfW, 0, halfW, h);
@@ -937,55 +933,49 @@
         scene.remove(impromptuMarker);
         impromptuMarker = null;
       }
-      const spotlightCard = document.getElementById('spotlight-card');
-      if (activeSpotlightCoords && (!spotlightCard || !spotlightCard.classList.contains('opacity-100'))) {
-        activeSpotlightCoords = null;
-      }
     }
 
-    function showSpotlightCard(h) {
-      if (!h) return;
-      activeSpotlightCoords = { phi: h.phi, theta: h.theta, id: h.hotspotId || h.id };
-      safeSetText('spotlight-target-title', h.title || 'Spotlight Target');
-      safeSetText('spotlight-target-text', h.text || 'Observe the detail highlighted by your teacher.');
+    function showSpotlightCard(data) {
+      activeSpotlightCoords = { phi: data.phi, theta: data.theta };
 
-      const imgContainer = document.getElementById('spotlight-img-container');
-      const targetImg = document.getElementById('spotlight-target-img');
+      safeSetText('spotlight-target-title', data.title || 'Target');
+      safeSetText('spotlight-target-text', data.text || '');
+
+      const imgBox = document.getElementById('spotlight-img-container');
+      const imgEl = document.getElementById('spotlight-target-img');
       const lightboxImg = document.getElementById('lightbox-full-img');
       const lightboxCaption = document.getElementById('lightbox-caption');
 
-      if (h.image) {
-        if (targetImg) targetImg.src = h.image;
-        if (lightboxImg) lightboxImg.src = h.image;
-        if (lightboxCaption) lightboxCaption.textContent = h.title || '';
-        if (imgContainer) imgContainer.classList.remove('hidden');
-      } else {
-        if (targetImg) targetImg.src = '';
-        if (imgContainer) imgContainer.classList.add('hidden');
+      if (data.image && imgBox && imgEl) {
+        imgEl.src = data.image;
+        if (lightboxImg) lightboxImg.src = data.image;
+        if (lightboxCaption) lightboxCaption.textContent = data.title || '';
+        imgBox.classList.remove('hidden');
+      } else if (imgBox) {
+        imgBox.classList.add('hidden');
       }
 
       const card = document.getElementById('spotlight-card');
       if (card) {
         card.classList.remove('translate-y-32', 'opacity-0');
-        card.classList.add('translate-y-0', 'opacity-100');
       }
-
-      showStudentToast(`Teacher Spotlight: ${h.title || 'Target'}`);
     }
 
     function dismissSpotlightCard() {
       const card = document.getElementById('spotlight-card');
       if (card) {
         card.classList.add('translate-y-32', 'opacity-0');
-        card.classList.remove('translate-y-0', 'opacity-100');
       }
-      const imgContainer = document.getElementById('spotlight-img-container');
-      if (imgContainer) imgContainer.classList.add('hidden');
       activeSpotlightCoords = null;
     }
 
-    /* WebRTC Networking */
+    /* ---------------------------------------------------------
+       WebRTC Networking (Multi-Device Client)
+       --------------------------------------------------------- */
     function initializePeerNetwork(roomCode) {
+      if (isConnecting || isConnectedToTeacher) return;
+      isConnecting = true;
+
       currentRoomCode = roomCode.trim();
       const teacherPeerId = `teacher-room-${currentRoomCode}`;
       const errPill = document.getElementById('join-error-pill');
@@ -1001,9 +991,16 @@
         safeSetText('join-status-msg', '1/3: Connecting to WebRTC relay...');
       }
 
+      if (teacherConn) {
+        try { teacherConn.close(); } catch (e) {}
+        teacherConn = null;
+      }
       if (peer) {
         try { peer.destroy(); } catch (e) {}
+        peer = null;
       }
+
+      clearTimeout(connectionTimeoutTimer);
 
       try {
         peer = new Peer(studentId, {
@@ -1011,19 +1008,22 @@
           config: {
             iceServers: [
               { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' }
+              { urls: 'stun:stun1.l.google.com:19302' },
+              { urls: 'stun:stun2.l.google.com:19302' },
+              { urls: 'stun:stun.services.mozilla.com' }
             ]
           }
         });
 
         peer.on('open', (id) => {
-          safeSetText('network-client-id', `ID: ${id}`);
+          safeSetText('network-client-id', `ID: ${id.substring(0, 15)}...`);
           if (statusPill) safeSetText('join-status-msg', `2/3: Handshaking with teacher room ${currentRoomCode}...`);
           connectToTeacherPeer(teacherPeerId);
         });
 
         peer.on('error', (err) => {
           console.warn('Peer error:', err);
+          isConnecting = false;
           if (err && err.type === 'peer-unavailable') {
             if (errPill) {
               errPill.classList.remove('hidden');
@@ -1033,10 +1033,10 @@
             if (btnIcon) btnIcon.className = 'fa-solid fa-satellite-dish';
             if (btnText) btnText.textContent = 'Enter Expedition';
           }
-          setupLocalChannelSync();
         });
       } catch (err) {
         console.warn('PeerJS init failed:', err);
+        isConnecting = false;
         setupLocalChannelSync();
       }
 
@@ -1044,7 +1044,8 @@
     }
 
     function connectToTeacherPeer(teacherPeerId) {
-      if (!peer || peer.destroyed) return;
+      if (!peer || peer.destroyed || isConnectedToTeacher) return;
+
       try {
         teacherConn = peer.connect(teacherPeerId, { reliable: true });
 
@@ -1061,6 +1062,7 @@
 
         teacherConn.on('close', () => {
           isConnectedToTeacher = false;
+          isConnecting = false;
           showStudentToast('Teacher disconnected.');
         });
 
@@ -1071,15 +1073,31 @@
         console.warn('Connect error:', e);
       }
 
-      setTimeout(() => {
-        if (!isConnectedToTeacher && peer && !peer.destroyed) {
-          connectToTeacherPeer(teacherPeerId);
+      connectionTimeoutTimer = setTimeout(() => {
+        if (!isConnectedToTeacher && isConnecting) {
+          isConnecting = false;
+          const statusPill = document.getElementById('join-status-pill');
+          const errPill = document.getElementById('join-error-pill');
+          const btnIcon = document.getElementById('btn-join-icon');
+          const btnText = document.getElementById('btn-join-text');
+
+          if (statusPill) statusPill.classList.add('hidden');
+          if (errPill) {
+            errPill.classList.remove('hidden');
+            safeSetText('join-error-msg', 'Connection timed out. Check that teacher is on room ' + currentRoomCode);
+          }
+          if (btnIcon) btnIcon.className = 'fa-solid fa-satellite-dish';
+          if (btnText) btnText.textContent = 'Retry Connection';
         }
-      }, 4000);
+      }, 10000);
     }
 
     function onTeacherConnected() {
+      if (isConnectedToTeacher) return;
       isConnectedToTeacher = true;
+      isConnecting = false;
+      clearTimeout(connectionTimeoutTimer);
+
       requestScreenWakeLock();
       const screenJoin = document.getElementById('screen-join');
       const screenHud = document.getElementById('screen-hud');
@@ -1088,7 +1106,7 @@
       safeSetText('hud-room-code', `ROOM ${currentRoomCode}`);
 
       clearInterval(heartbeatInterval);
-      heartbeatInterval = setInterval(sendHeartbeat, 5000);
+      heartbeatInterval = setInterval(sendHeartbeat, 4000);
       sendHeartbeat();
 
       clearInterval(gazeBroadcastInterval);
@@ -1155,7 +1173,20 @@
     function handleTeacherIncomingPayload(data) {
       if (!data) return;
 
-      if (data.type === 'TEACHER_CHANGE_TOUR' && data.tour) {
+      if (data.type === 'TEACHER_HANDSHAKE_ACK') {
+        if (!isConnectedToTeacher) {
+          onTeacherConnected();
+        }
+        if (data.tour) {
+          currentTour = data.tour;
+          safeSetText('hud-tour-title', currentTour.title || 'Tour');
+        }
+        if (data.scene) {
+          loadScene(data.scene);
+        } else if (data.tour && data.tour.scenes && data.tour.scenes[0]) {
+          loadScene(data.tour.scenes[0]);
+        }
+      } else if (data.type === 'TEACHER_CHANGE_TOUR' && data.tour) {
         currentTour = data.tour;
         safeSetText('hud-tour-title', currentTour.title || 'Tour');
         if (currentTour.scenes && currentTour.scenes[0]) {
@@ -1176,6 +1207,9 @@
           activeSpotlightCoords = null;
         }
       } else if (data.type === 'TEACHER_CATCHUP_STATE') {
+        if (!isConnectedToTeacher) {
+          onTeacherConnected();
+        }
         if (data.tour) {
           currentTour = data.tour;
           safeSetText('hud-tour-title', currentTour.title || 'Tour');
@@ -1188,7 +1222,9 @@
       }
     }
 
-    /* Gyroscope & Motion Permissions */
+    /* ---------------------------------------------------------
+       Gyroscope & Motion Tracking
+       --------------------------------------------------------- */
     function requestMotionPermissionDirect(callback) {
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission()
@@ -1304,7 +1340,9 @@
       setTimeout(() => { toast.classList.add('opacity-0'); }, 3000);
     }
 
-    /* UI Event Handlers */
+    /* ---------------------------------------------------------
+       UI Event Handlers
+       --------------------------------------------------------- */
     function setupUIHandlers() {
       const urlParams = new URLSearchParams(window.location.search);
       const roomParam = urlParams.get('room');
@@ -1334,7 +1372,7 @@
 
           requestLandscapeAndFullscreen();
 
-          requestMotionPermissionDirect((granted) => {
+          requestMotionPermissionDirect(() => {
             initializePeerNetwork(codeInput);
           });
         };
