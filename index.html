@@ -891,11 +891,30 @@
       animTargetLat = Math.max(-85, Math.min(85, targetLat));
     }
 
+    function applyStartingPerspective(targetLon = 0, targetLat = 0) {
+      lon = targetLon;
+      lat = targetLat;
+
+      // If motion tracking is active, calibrate the yaw offset so forward points at the teacher's target
+      if (isGyroscopeActive && deviceOrientationData) {
+        const alpha = deviceOrientationData.alpha ? deviceOrientationData.alpha : 0;
+        // Invert sensor alpha and align with the teacher's desired target longitude
+        const currentSensorYawRad = THREE.MathUtils.degToRad(alpha);
+        const desiredYawRad = THREE.MathUtils.degToRad(targetLon);
+        yawOffset = desiredYawRad - currentSensorYawRad;
+      }
+    }
+
     function loadScene(sceneData) {
       if (!sceneData) return;
       currentScene = sceneData;
 
       safeSetText('hud-scene-title', `Scene: ${sceneData.title || 'Untitled'}`);
+
+      // Apply initial scene perspective if provided
+      const initLon = typeof sceneData.initialLon === 'number' ? sceneData.initialLon : 0;
+      const initLat = typeof sceneData.initialLat === 'number' ? sceneData.initialLat : 0;
+      applyStartingPerspective(initLon, initLat);
 
       if (sceneData.panorama && sphereMesh && textureLoader) {
         textureLoader.load(
@@ -1338,6 +1357,11 @@
         }
       } else if (data.type === 'TEACHER_CHANGE_SCENE' && data.sceneData) {
         loadScene(data.sceneData);
+      } else if (data.type === 'TEACHER_RECENTER_PERSPECTIVE') {
+        const initLon = typeof data.initialLon === 'number' ? data.initialLon : 0;
+        const initLat = typeof data.initialLat === 'number' ? data.initialLat : 0;
+        applyStartingPerspective(initLon, initLat);
+        showStudentToast('View centered by teacher');
       } else if (data.type === 'TEACHER_SPOTLIGHT') {
         showSpotlightCard(data);
       } else if (data.type === 'TEACHER_CLEAR_SPOTLIGHT') {
