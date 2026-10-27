@@ -47,14 +47,65 @@
       background: #000000;
     }
 
-    .indicator-arrow {
+    /* Central Floating Directional Guidance Indicator (Google Expeditions Style) */
+    .directional-compass-container {
       position: absolute;
-      z-index: 25;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 30;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.25s ease, transform 0.15s ease;
+      opacity: 0;
+    }
+
+    .directional-compass-ring {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 2px dashed rgba(245, 158, 11, 0.6);
+      background: rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(4px);
       display: flex;
       align-items: center;
       justify-content: center;
-      pointer-events: none;
-      transition: opacity 0.2s ease, transform 0.15s ease;
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.35);
+      position: relative;
+    }
+
+    .compass-arrow-rotor {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: absolute;
+      inset: 0;
+      transition: transform 0.08s linear;
+    }
+
+    .compass-arrow-rotor i {
+      color: #f59e0b;
+      font-size: 24px;
+      transform: translateY(-22px);
+      filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.9));
+    }
+
+    .compass-distance-pill {
+      margin-top: 8px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #fef3c7;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(245, 158, 11, 0.5);
+      padding: 2px 8px;
+      border-radius: 9999px;
+      backdrop-blur: 4px;
     }
 
     @keyframes pulse-attention {
@@ -148,6 +199,37 @@
   <!-- STEREO CALIBRATION CROSSHAIRS -->
   <div id="calib-left" class="calibration-target" style="left: 25%;"></div>
   <div id="calib-right" class="calibration-target" style="left: 75%;"></div>
+
+  <!-- CENTRAL DIRECTIONAL COMPASS HUD GUIDANCE (Monoscopic & Stereo) -->
+  <div id="compass-mono" class="directional-compass-container left-1/2">
+    <div class="directional-compass-ring">
+      <div id="compass-arrow-rotor-mono" class="compass-arrow-rotor">
+        <i class="fa-solid fa-location-arrow"></i>
+      </div>
+      <div class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></div>
+    </div>
+    <span id="compass-label-mono" class="compass-distance-pill">Follow Arrow</span>
+  </div>
+
+  <div id="compass-stereo-left" class="directional-compass-container hidden" style="left: 25%;">
+    <div class="directional-compass-ring">
+      <div id="compass-arrow-rotor-left" class="compass-arrow-rotor">
+        <i class="fa-solid fa-location-arrow"></i>
+      </div>
+      <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+    </div>
+    <span id="compass-label-left" class="compass-distance-pill">Follow Arrow</span>
+  </div>
+
+  <div id="compass-stereo-right" class="directional-compass-container hidden" style="left: 75%;">
+    <div class="directional-compass-ring">
+      <div id="compass-arrow-rotor-right" class="compass-arrow-rotor">
+        <i class="fa-solid fa-location-arrow"></i>
+      </div>
+      <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+    </div>
+    <span id="compass-label-right" class="compass-distance-pill">Follow Arrow</span>
+  </div>
 
   <!-- ROTATE TO LANDSCAPE OVERLAY (for Cardboard/Homido Grab) -->
   <div id="rotate-device-prompt" class="fixed inset-0 z-50 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center space-y-4">
@@ -342,35 +424,6 @@
             Continue with Drag Look
           </button>
         </div>
-      </div>
-    </div>
-
-    <!-- DIRECTIONAL ATTENTION ARROWS -->
-    <div id="arrow-left" class="indicator-arrow left-4 top-1/2 -translate-y-1/2 opacity-0">
-      <div class="pulse-glow bg-amber-500/90 text-slate-950 px-3 py-2 rounded-2xl font-black text-xs flex items-center gap-2 shadow-2xl border-2 border-amber-300">
-        <i class="fa-solid fa-arrow-left text-sm"></i>
-        <span>Look Left</span>
-      </div>
-    </div>
-
-    <div id="arrow-right" class="indicator-arrow right-4 top-1/2 -translate-y-1/2 opacity-0">
-      <div class="pulse-glow bg-amber-500/90 text-slate-950 px-3 py-2 rounded-2xl font-black text-xs flex items-center gap-2 shadow-2xl border-2 border-amber-300">
-        <span>Look Right</span>
-        <i class="fa-solid fa-arrow-right text-sm"></i>
-      </div>
-    </div>
-
-    <div id="arrow-up" class="indicator-arrow top-16 left-1/2 -translate-x-1/2 opacity-0">
-      <div class="pulse-glow bg-amber-500/90 text-slate-950 px-3 py-1.5 rounded-2xl font-black text-xs flex items-center gap-2 shadow-2xl border-2 border-amber-300">
-        <i class="fa-solid fa-arrow-up text-xs"></i>
-        <span>Look Up</span>
-      </div>
-    </div>
-
-    <div id="arrow-down" class="indicator-arrow bottom-16 left-1/2 -translate-x-1/2 opacity-0">
-      <div class="pulse-glow bg-amber-500/90 text-slate-950 px-3 py-1.5 rounded-2xl font-black text-xs flex items-center gap-2 shadow-2xl border-2 border-amber-300">
-        <i class="fa-solid fa-arrow-down text-xs"></i>
-        <span>Look Down</span>
       </div>
     </div>
 
@@ -726,6 +779,8 @@
       const w = window.innerWidth || 800;
       const leftTarget = document.getElementById('calib-left');
       const rightTarget = document.getElementById('calib-right');
+      const compassLeft = document.getElementById('compass-stereo-left');
+      const compassRight = document.getElementById('compass-stereo-right');
 
       if (!leftTarget || !rightTarget) return;
 
@@ -734,22 +789,33 @@
 
       leftTarget.style.left = `${leftCenter}px`;
       rightTarget.style.left = `${rightCenter}px`;
+
+      if (compassLeft) compassLeft.style.left = `${leftCenter}px`;
+      if (compassRight) compassRight.style.left = `${rightCenter}px`;
     }
 
     function updateDirectionalAttentionPointers() {
-      const arrowLeft = document.getElementById('arrow-left');
-      const arrowRight = document.getElementById('arrow-right');
-      const arrowUp = document.getElementById('arrow-up');
-      const arrowDown = document.getElementById('arrow-down');
+      const compassMono = document.getElementById('compass-mono');
+      const compassLeft = document.getElementById('compass-stereo-left');
+      const compassRight = document.getElementById('compass-stereo-right');
 
+      const rotorMono = document.getElementById('compass-arrow-rotor-mono');
+      const rotorLeft = document.getElementById('compass-arrow-rotor-left');
+      const rotorRight = document.getElementById('compass-arrow-rotor-right');
+
+      const labelMono = document.getElementById('compass-label-mono');
+      const labelLeft = document.getElementById('compass-label-left');
+      const labelRight = document.getElementById('compass-label-right');
+
+      // Hide all compasses if no active target is spotlighted
       if (!activeSpotlightCoords || !camera) {
-        if (arrowLeft) arrowLeft.style.opacity = '0';
-        if (arrowRight) arrowRight.style.opacity = '0';
-        if (arrowUp) arrowUp.style.opacity = '0';
-        if (arrowDown) arrowDown.style.opacity = '0';
+        if (compassMono) compassMono.style.opacity = '0';
+        if (compassLeft) compassLeft.style.opacity = '0';
+        if (compassRight) compassRight.style.opacity = '0';
         return;
       }
 
+      // Compute vector to active spotlight target
       const rad = 450;
       const tPhi = activeSpotlightCoords.phi;
       const tTheta = activeSpotlightCoords.theta;
@@ -759,53 +825,66 @@
         rad * Math.sin(tPhi) * Math.cos(tTheta)
       );
 
+      // Camera forward vector and vector to target
+      const cameraDir = new THREE.Vector3();
+      camera.getWorldDirection(cameraDir);
+
+      const targetDir = targetPos.clone().normalize();
+      const dotProduct = cameraDir.dot(targetDir);
+
+      // Target projection on screen
       const projected = targetPos.clone().project(camera);
       const isTargetInFront = projected.z < 1;
-      const isVisibleOnScreen = isTargetInFront &&
-        projected.x >= -0.65 && projected.x <= 0.65 &&
-        projected.y >= -0.65 && projected.y <= 0.65;
 
-      if (isVisibleOnScreen) {
-        if (arrowLeft) arrowLeft.style.opacity = '0';
-        if (arrowRight) arrowRight.style.opacity = '0';
-        if (arrowUp) arrowUp.style.opacity = '0';
-        if (arrowDown) arrowDown.style.opacity = '0';
+      // Check if target is comfortably inside the student's central field of view (~18 deg)
+      const isInFieldOfView = isTargetInFront && (dotProduct > 0.88);
+
+      if (isInFieldOfView) {
+        // Target is directly in view: hide arrow smoothly, letting student focus on the landmark
+        if (compassMono) compassMono.style.opacity = '0';
+        if (compassLeft) compassLeft.style.opacity = '0';
+        if (compassRight) compassRight.style.opacity = '0';
         return;
       }
 
-      const targetLat = 90 - (tPhi * (180 / Math.PI));
-      const targetLon = (tTheta * (180 / Math.PI));
+      // Target is out of view: calculate screen-space angle for the compass needle
+      // Transform target direction into camera local coordinates
+      const camInverse = camera.quaternion.clone().invert();
+      const localTargetDir = targetDir.clone().applyQuaternion(camInverse);
 
-      let diffLon = ((targetLon - lon) % 360);
-      if (diffLon > 180) diffLon -= 360;
-      if (diffLon < -180) diffLon += 360;
-
-      const diffLat = targetLat - lat;
-
-      if (Math.abs(diffLon) > 28) {
-        if (diffLon > 0) {
-          if (arrowRight) arrowRight.style.opacity = '1';
-          if (arrowLeft) arrowLeft.style.opacity = '0';
-        } else {
-          if (arrowLeft) arrowLeft.style.opacity = '1';
-          if (arrowRight) arrowRight.style.opacity = '0';
-        }
-      } else {
-        if (arrowLeft) arrowLeft.style.opacity = '0';
-        if (arrowRight) arrowRight.style.opacity = '0';
+      // Angle in 2D camera viewport (local X is right, local Y is up, local -Z is forward)
+      // When looking backwards (localTargetDir.z > 0), reflect X so the student turns the shorter route
+      let angleRad = Math.atan2(localTargetDir.y, -localTargetDir.x) - (Math.PI / 2);
+      if (localTargetDir.z > 0) {
+        angleRad = Math.atan2(localTargetDir.y, localTargetDir.x) + (Math.PI / 2);
       }
 
-      if (Math.abs(diffLat) > 25) {
-        if (diffLat > 0) {
-          if (arrowUp) arrowUp.style.opacity = '1';
-          if (arrowDown) arrowDown.style.opacity = '0';
-        } else {
-          if (arrowDown) arrowDown.style.opacity = '1';
-          if (arrowUp) arrowUp.style.opacity = '0';
-        }
+      // Compass needle uses FontAwesome fa-location-arrow (natively pointing up-right at 45 deg)
+      // Subtract 45 deg (PI/4) to align tip with angle
+      const rotationDeg = THREE.MathUtils.radToDeg(angleRad) - 45;
+      const transformCss = `rotate(${rotationDeg}deg)`;
+
+      if (rotorMono) rotorMono.style.transform = transformCss;
+      if (rotorLeft) rotorLeft.style.transform = transformCss;
+      if (rotorRight) rotorRight.style.transform = transformCss;
+
+      // Calculate approximate angular distance (degrees) to guide student
+      const angularDistance = Math.round(THREE.MathUtils.radToDeg(Math.acos(Math.max(-1, Math.min(1, dotProduct)))));
+      const distanceLabel = `${angularDistance}° Turn`;
+
+      if (labelMono) labelMono.textContent = distanceLabel;
+      if (labelLeft) labelLeft.textContent = distanceLabel;
+      if (labelRight) labelRight.textContent = distanceLabel;
+
+      // Reveal appropriate compass HUD based on display mode (monoscopic vs VR split)
+      if (isVrSplitMode) {
+        if (compassMono) compassMono.style.opacity = '0';
+        if (compassLeft) compassLeft.style.opacity = '1';
+        if (compassRight) compassRight.style.opacity = '1';
       } else {
-        if (arrowUp) arrowUp.style.opacity = '0';
-        if (arrowDown) arrowDown.style.opacity = '0';
+        if (compassMono) compassMono.style.opacity = '1';
+        if (compassLeft) compassLeft.style.opacity = '0';
+        if (compassRight) compassRight.style.opacity = '0';
       }
     }
 
@@ -1413,15 +1492,25 @@
           isVrSplitMode = !isVrSplitMode;
           document.body.classList.toggle('vr-split-active', isVrSplitMode);
 
+          const compassMono = document.getElementById('compass-mono');
+          const compassLeft = document.getElementById('compass-stereo-left');
+          const compassRight = document.getElementById('compass-stereo-right');
+
           if (isVrSplitMode) {
             if (!isGyroscopeActive) requestMotionPermissionDirect();
             requestLandscapeAndFullscreen();
             safeSetText('lbl-vr-mode', 'Exit VR');
             btnVr.classList.replace('bg-indigo-600', 'bg-purple-600');
+            if (compassMono) compassMono.classList.add('hidden');
+            if (compassLeft) compassLeft.classList.remove('hidden');
+            if (compassRight) compassRight.classList.remove('hidden');
             showStudentToast('Homido Grab VR active. Insert phone into viewer.');
           } else {
             safeSetText('lbl-vr-mode', 'Homido VR');
             btnVr.classList.replace('bg-purple-600', 'bg-indigo-600');
+            if (compassMono) compassMono.classList.remove('hidden');
+            if (compassLeft) compassLeft.classList.add('hidden');
+            if (compassRight) compassRight.classList.add('hidden');
             onWindowResize();
             showStudentToast('Exited VR Mode.');
           }
