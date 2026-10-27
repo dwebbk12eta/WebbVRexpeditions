@@ -475,21 +475,22 @@
       </div>
     </div>
 
-    <!-- TEACHER SPOTLIGHT CARD -->
-    <div id="spotlight-card" class="pointer-events-auto fixed bottom-5 left-1/2 -translate-x-1/2 max-w-lg w-[92%] sm:w-auto bg-slate-950/95 border border-indigo-500/50 rounded-2xl p-4 shadow-2xl backdrop-blur-xl transition-all duration-300 transform translate-y-32 opacity-0 flex flex-col gap-2.5">
+    <!-- TEACHER SPOTLIGHT CARDS CONTAINER (MONO & HOMIDO STEREO) -->
+    <!-- Monoscopic Card (Regular Screen Mode) -->
+    <div id="spotlight-card-mono" class="pointer-events-auto fixed bottom-5 left-1/2 -translate-x-1/2 max-w-lg w-[92%] sm:w-auto bg-slate-950/95 border border-indigo-500/50 rounded-2xl p-4 shadow-2xl backdrop-blur-xl transition-all duration-300 transform translate-y-32 opacity-0 flex flex-col gap-2.5 z-30">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2 text-indigo-300 text-xs font-bold uppercase tracking-wider">
           <i class="fa-solid fa-crosshairs text-amber-400"></i>
           <span>Teacher Spotlight</span>
         </div>
-        <button id="btn-dismiss-spotlight-card" class="text-slate-400 hover:text-white p-1 rounded-lg text-xs">
+        <button id="btn-dismiss-spotlight-mono" class="text-slate-400 hover:text-white p-1 rounded-lg text-xs">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
 
       <!-- Detail Image Preview -->
-      <div id="spotlight-img-container" class="hidden relative rounded-xl overflow-hidden bg-slate-900 border border-slate-800 max-h-48 group cursor-pointer" title="Tap to inspect full image">
-        <img id="spotlight-target-img" src="" alt="Spotlight Detail" class="w-full h-40 object-cover group-hover:scale-105 transition duration-300">
+      <div id="spotlight-img-mono" class="hidden relative rounded-xl overflow-hidden bg-slate-900 border border-slate-800 max-h-44 group cursor-pointer" title="Tap to inspect full image">
+        <img src="" alt="Spotlight Detail" class="w-full h-36 object-cover group-hover:scale-105 transition duration-300">
         <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent flex items-end justify-between p-2">
           <span class="text-[10px] text-slate-300 bg-slate-900/80 px-2 py-0.5 rounded-full border border-slate-700/60 backdrop-blur-sm">
             <i class="fa-solid fa-magnifying-glass-plus mr-1 text-amber-400"></i>Tap to Zoom
@@ -498,8 +499,8 @@
       </div>
 
       <div>
-        <h3 id="spotlight-target-title" class="text-sm font-bold text-white">Target Name</h3>
-        <p id="spotlight-target-text" class="text-xs text-slate-300 leading-relaxed mt-1">Target narration description...</p>
+        <h3 class="spotlight-title text-sm font-bold text-white">Target Name</h3>
+        <p class="spotlight-text text-xs text-slate-300 leading-relaxed mt-1">Target narration description...</p>
       </div>
 
       <div class="pt-1 flex items-center justify-end">
@@ -507,6 +508,40 @@
           <i class="fa-solid fa-eye text-[10px]"></i>
           <span>Center Target</span>
         </button>
+      </div>
+    </div>
+
+    <!-- Stereoscopic Left Eye Card (Homido Grab) -->
+    <div id="spotlight-card-stereo-left" class="pointer-events-none fixed bottom-4 w-[42%] max-w-[320px] -translate-x-1/2 bg-slate-950/95 border border-indigo-500/50 rounded-2xl p-3 shadow-2xl backdrop-blur-xl transition-all duration-300 transform translate-y-32 opacity-0 flex-col gap-2 z-30 hidden" style="left: 25%;">
+      <div class="flex items-center gap-1.5 text-indigo-300 text-[10px] font-bold uppercase tracking-wider">
+        <i class="fa-solid fa-crosshairs text-amber-400"></i>
+        <span>Teacher Spotlight</span>
+      </div>
+
+      <div class="spotlight-img-box hidden relative rounded-xl overflow-hidden bg-slate-900 border border-slate-800 max-h-28">
+        <img src="" alt="Detail" class="w-full h-24 object-cover">
+      </div>
+
+      <div>
+        <h3 class="spotlight-title text-xs font-bold text-white truncate">Target Name</h3>
+        <p class="spotlight-text text-[10px] text-slate-300 leading-tight mt-1 line-clamp-3">Description...</p>
+      </div>
+    </div>
+
+    <!-- Stereoscopic Right Eye Card (Homido Grab) -->
+    <div id="spotlight-card-stereo-right" class="pointer-events-none fixed bottom-4 w-[42%] max-w-[320px] -translate-x-1/2 bg-slate-950/95 border border-indigo-500/50 rounded-2xl p-3 shadow-2xl backdrop-blur-xl transition-all duration-300 transform translate-y-32 opacity-0 flex-col gap-2 z-30 hidden" style="left: 75%;">
+      <div class="flex items-center gap-1.5 text-indigo-300 text-[10px] font-bold uppercase tracking-wider">
+        <i class="fa-solid fa-crosshairs text-amber-400"></i>
+        <span>Teacher Spotlight</span>
+      </div>
+
+      <div class="spotlight-img-box hidden relative rounded-xl overflow-hidden bg-slate-900 border border-slate-800 max-h-28">
+        <img src="" alt="Detail" class="w-full h-24 object-cover">
+      </div>
+
+      <div>
+        <h3 class="spotlight-title text-xs font-bold text-white truncate">Target Name</h3>
+        <p class="spotlight-text text-[10px] text-slate-300 leading-tight mt-1 line-clamp-3">Description...</p>
       </div>
     </div>
 
@@ -554,6 +589,7 @@
     let isVrSplitMode = false;
     let isGyroscopeActive = false;
     let wakeLockSentinel = null;
+    let activeSpotlightData = null; // Stored to maintain visibility until teacher dismissal
 
     /* Homido Grab Optical Calibration */
     let opticalPixelOffset = parseInt(localStorage.getItem('homido_optical_offset') || '0', 10);
@@ -829,6 +865,8 @@
       const rightTarget = document.getElementById('calib-right');
       const compassLeft = document.getElementById('compass-stereo-left');
       const compassRight = document.getElementById('compass-stereo-right');
+      const cardLeft = document.getElementById('spotlight-card-stereo-left');
+      const cardRight = document.getElementById('spotlight-card-stereo-right');
 
       if (!leftTarget || !rightTarget) return;
 
@@ -840,6 +878,9 @@
 
       if (compassLeft) compassLeft.style.left = `${leftCenter}px`;
       if (compassRight) compassRight.style.left = `${rightCenter}px`;
+
+      if (cardLeft) cardLeft.style.left = `${leftCenter}px`;
+      if (cardRight) cardRight.style.left = `${rightCenter}px`;
     }
 
     function updateDirectionalAttentionPointers() {
@@ -1078,79 +1119,94 @@
 
     function showSpotlightCard(data) {
       if (!data) return;
+      activeSpotlightData = data;
       activeSpotlightCoords = { phi: data.phi, theta: data.theta };
 
-      safeSetText('spotlight-target-title', data.title || 'Curriculum Target');
-      safeSetText('spotlight-target-text', data.text || '');
+      // Update text in all cards (mono, left eye, right eye)
+      document.querySelectorAll('.spotlight-title').forEach(el => {
+        el.textContent = data.title || 'Curriculum Target';
+      });
+      document.querySelectorAll('.spotlight-text').forEach(el => {
+        el.textContent = data.text || '';
+      });
 
-      const imgBox = document.getElementById('spotlight-img-container');
-      const imgEl = document.getElementById('spotlight-target-img');
+      // Handle image updates across cards
+      const monoImgBox = document.getElementById('spotlight-img-mono');
+      const monoImg = monoImgBox ? monoImgBox.querySelector('img') : null;
       const lightboxImg = document.getElementById('lightbox-full-img');
       const lightboxCaption = document.getElementById('lightbox-caption');
 
-      if (data.image && imgBox && imgEl) {
-        imgEl.src = data.image;
+      const stereoLeftCard = document.getElementById('spotlight-card-stereo-left');
+      const stereoRightCard = document.getElementById('spotlight-card-stereo-right');
+      const stereoBoxes = document.querySelectorAll('.spotlight-img-box');
+
+      if (data.image) {
+        if (monoImg) monoImg.src = data.image;
+        if (monoImgBox) monoImgBox.classList.remove('hidden');
         if (lightboxImg) lightboxImg.src = data.image;
         if (lightboxCaption) lightboxCaption.textContent = data.title || '';
-        imgBox.classList.remove('hidden');
-      } else if (imgBox) {
-        imgBox.classList.add('hidden');
+
+        stereoBoxes.forEach(box => {
+          const img = box.querySelector('img');
+          if (img) img.src = data.image;
+          box.classList.remove('hidden');
+        });
+      } else {
+        if (monoImgBox) monoImgBox.classList.add('hidden');
+        stereoBoxes.forEach(box => box.classList.add('hidden'));
       }
 
-      const card = document.getElementById('spotlight-card');
-      if (card) {
-        card.classList.remove('translate-y-32', 'opacity-0');
+      renderSpotlightVisibility();
+    }
+
+    function renderSpotlightVisibility() {
+      const cardMono = document.getElementById('spotlight-card-mono');
+      const cardLeft = document.getElementById('spotlight-card-stereo-left');
+      const cardRight = document.getElementById('spotlight-card-stereo-right');
+
+      if (!activeSpotlightData) {
+        if (cardMono) cardMono.classList.add('translate-y-32', 'opacity-0');
+        if (cardLeft) {
+          cardLeft.classList.add('translate-y-32', 'opacity-0');
+          cardLeft.classList.add('hidden');
+        }
+        if (cardRight) {
+          cardRight.classList.add('translate-y-32', 'opacity-0');
+          cardRight.classList.add('hidden');
+        }
+        return;
+      }
+
+      if (isVrSplitMode) {
+        // VR Mode: hide mono card, display synchronized left and right cards
+        if (cardMono) cardMono.classList.add('translate-y-32', 'opacity-0');
+        if (cardLeft) {
+          cardLeft.classList.remove('hidden');
+          cardLeft.classList.remove('translate-y-32', 'opacity-0');
+        }
+        if (cardRight) {
+          cardRight.classList.remove('hidden');
+          cardRight.classList.remove('translate-y-32', 'opacity-0');
+        }
+      } else {
+        // Mono Mode: display single center card, hide stereo cards
+        if (cardMono) cardMono.classList.remove('translate-y-32', 'opacity-0');
+        if (cardLeft) {
+          cardLeft.classList.add('translate-y-32', 'opacity-0');
+          cardLeft.classList.add('hidden');
+        }
+        if (cardRight) {
+          cardRight.classList.add('translate-y-32', 'opacity-0');
+          cardRight.classList.add('hidden');
+        }
       }
     }
 
     function dismissSpotlightCard() {
-      const card = document.getElementById('spotlight-card');
-      if (card) {
-        card.classList.add('translate-y-32', 'opacity-0');
-      }
+      activeSpotlightData = null;
       activeSpotlightCoords = null;
       clearImpromptuMarker();
-    }
-
-    function clearImpromptuMarker() {
-      if (impromptuMarker && scene) {
-        scene.remove(impromptuMarker);
-        impromptuMarker = null;
-      }
-    }
-
-    function showSpotlightCard(data) {
-      activeSpotlightCoords = { phi: data.phi, theta: data.theta };
-
-      safeSetText('spotlight-target-title', data.title || 'Target');
-      safeSetText('spotlight-target-text', data.text || '');
-
-      const imgBox = document.getElementById('spotlight-img-container');
-      const imgEl = document.getElementById('spotlight-target-img');
-      const lightboxImg = document.getElementById('lightbox-full-img');
-      const lightboxCaption = document.getElementById('lightbox-caption');
-
-      if (data.image && imgBox && imgEl) {
-        imgEl.src = data.image;
-        if (lightboxImg) lightboxImg.src = data.image;
-        if (lightboxCaption) lightboxCaption.textContent = data.title || '';
-        imgBox.classList.remove('hidden');
-      } else if (imgBox) {
-        imgBox.classList.add('hidden');
-      }
-
-      const card = document.getElementById('spotlight-card');
-      if (card) {
-        card.classList.remove('translate-y-32', 'opacity-0');
-      }
-    }
-
-    function dismissSpotlightCard() {
-      const card = document.getElementById('spotlight-card');
-      if (card) {
-        card.classList.add('translate-y-32', 'opacity-0');
-      }
-      activeSpotlightCoords = null;
+      renderSpotlightVisibility();
     }
 
     /* ---------------------------------------------------------
@@ -1616,6 +1672,7 @@
             onWindowResize();
             showStudentToast('Exited VR Mode.');
           }
+          renderSpotlightVisibility();
           onWindowResize();
         };
       }
@@ -1711,9 +1768,9 @@
         };
       }
 
-      const btnDismissSpotlight = document.getElementById('btn-dismiss-spotlight-card');
-      if (btnDismissSpotlight) {
-        btnDismissSpotlight.onclick = () => dismissSpotlightCard();
+      const btnDismissSpotlightMono = document.getElementById('btn-dismiss-spotlight-mono');
+      if (btnDismissSpotlightMono) {
+        btnDismissSpotlightMono.onclick = () => dismissSpotlightCard();
       }
 
       const btnGrantDirect = document.getElementById('btn-grant-motion-direct');
@@ -1746,12 +1803,12 @@
         };
       }
 
-      const spotlightImgContainer = document.getElementById('spotlight-img-container');
+      const spotlightImgMono = document.getElementById('spotlight-img-mono');
       const lightboxModal = document.getElementById('spotlight-lightbox-modal');
       const btnCloseLightbox = document.getElementById('btn-close-lightbox');
 
-      if (spotlightImgContainer && lightboxModal) {
-        spotlightImgContainer.onclick = () => {
+      if (spotlightImgMono && lightboxModal) {
+        spotlightImgMono.onclick = () => {
           lightboxModal.classList.remove('hidden');
         };
       }
