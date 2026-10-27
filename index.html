@@ -520,10 +520,6 @@
     // Gyroscope tracking variables
     let deviceOrientationData = null;
     let screenOrientation = 0;
-    let yawOffset = 0;
-    let hasCalibratedInitialHeading = false;
-    let pendingInitialLon = null;
-    let pendingInitialLat = null;
     const zee = new THREE.Vector3(0, 0, 1);
     const euler = new THREE.Euler();
     const q0 = new THREE.Quaternion();
@@ -641,10 +637,7 @@
         const deltaX = (e.clientX - onPointerDownPointerX) * 0.18;
         const deltaY = (e.clientY - onPointerDownPointerY) * 0.18;
 
-        if (isGyroscopeActive) {
-          yawOffset -= THREE.MathUtils.degToRad(deltaX);
-          onPointerDownPointerX = e.clientX;
-        } else {
+        if (!isGyroscopeActive) {
           lon = deltaX + onPointerDownLon;
           lat = deltaY + onPointerDownLat;
         }
@@ -692,10 +685,6 @@
       quaternion.setFromEuler(euler);
       quaternion.multiply(q1);
       quaternion.multiply(q0.setFromAxisAngle(zee, -THREE.MathUtils.degToRad(orient)));
-      if (yawOffset !== 0) {
-        const yawQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawOffset);
-        quaternion.premultiply(yawQuat);
-      }
     }
 
     function renderLoop() {
@@ -705,16 +694,6 @@
         const alpha = deviceOrientationData.alpha ? deviceOrientationData.alpha : 0;
         const beta = deviceOrientationData.beta ? deviceOrientationData.beta : 0;
         const gamma = deviceOrientationData.gamma ? deviceOrientationData.gamma : 0;
-
-        // Perform one-time calibration on first orientation frame of a new scene
-        if (!hasCalibratedInitialHeading && pendingInitialLon !== null) {
-          const desiredYawRad = THREE.MathUtils.degToRad(pendingInitialLon);
-          const currentSensorAlphaRad = THREE.MathUtils.degToRad(alpha);
-          yawOffset = desiredYawRad - currentSensorAlphaRad;
-          hasCalibratedInitialHeading = true;
-          pendingInitialLon = null;
-          pendingInitialLat = null;
-        }
 
         setCameraQuaternionFromDevice(camera.quaternion, alpha, beta, gamma, screenOrientation);
 
@@ -904,41 +883,14 @@
       animTargetLat = Math.max(-85, Math.min(85, targetLat));
     }
 
-    function applyStartingPerspective(targetLon = 0, targetLat = 0) {
-      // In touch/drag mode: set the initial looking angle directly
-      lon = targetLon;
-      lat = targetLat;
-
-      // In gyroscope mode: schedule a single baseline calibration offset
-      hasCalibratedInitialHeading = false;
-      pendingInitialLon = targetLon;
-      pendingInitialLat = targetLat;
-
-      if (isGyroscopeActive && deviceOrientationData && deviceOrientationData.alpha !== null) {
-        const currentSensorAlphaRad = THREE.MathUtils.degToRad(deviceOrientationData.alpha);
-        const desiredYawRad = THREE.MathUtils.degToRad(targetLon);
-        yawOffset = desiredYawRad - currentSensorAlphaRad;
-        hasCalibratedInitialHeading = true;
-        pendingInitialLon = null;
-        pendingInitialLat = null;
-      }
-    }
-
     function loadScene(sceneData) {
       if (!sceneData) return;
 
-      // Prevent redundant reloads of the same scene from resetting student camera position
+      // Prevent redundant reloads of the same scene
       const isSameScene = currentScene && (currentScene.id === sceneData.id);
       currentScene = sceneData;
 
       safeSetText('hud-scene-title', `Scene: ${sceneData.title || 'Untitled'}`);
-
-      // Only calibrate the starting perspective when transitioning into a NEW scene
-      if (!isSameScene) {
-        const initLon = typeof sceneData.initialLon === 'number' ? sceneData.initialLon : 0;
-        const initLat = typeof sceneData.initialLat === 'number' ? sceneData.initialLat : 0;
-        applyStartingPerspective(initLon, initLat);
-      }
 
       if (sceneData.panorama && sphereMesh && textureLoader) {
         textureLoader.load(
@@ -1384,11 +1336,6 @@
         if (!currentScene || currentScene.id !== data.sceneData.id) {
           loadScene(data.sceneData);
         }
-      } else if (data.type === 'TEACHER_RECENTER_PERSPECTIVE') {
-        const initLon = typeof data.initialLon === 'number' ? data.initialLon : 0;
-        const initLat = typeof data.initialLat === 'number' ? data.initialLat : 0;
-        applyStartingPerspective(initLon, initLat);
-        showStudentToast('View centered by teacher');
       } else if (data.type === 'TEACHER_SPOTLIGHT') {
         showSpotlightCard({
           title: data.title || 'Curriculum Target',
