@@ -926,14 +926,19 @@
 
     function loadScene(sceneData) {
       if (!sceneData) return;
+
+      // Prevent redundant reloads of the same scene from resetting student camera position
+      const isSameScene = currentScene && (currentScene.id === sceneData.id);
       currentScene = sceneData;
 
       safeSetText('hud-scene-title', `Scene: ${sceneData.title || 'Untitled'}`);
 
-      // Apply initial scene perspective once on load
-      const initLon = typeof sceneData.initialLon === 'number' ? sceneData.initialLon : 0;
-      const initLat = typeof sceneData.initialLat === 'number' ? sceneData.initialLat : 0;
-      applyStartingPerspective(initLon, initLat);
+      // Only calibrate the starting perspective when transitioning into a NEW scene
+      if (!isSameScene) {
+        const initLon = typeof sceneData.initialLon === 'number' ? sceneData.initialLon : 0;
+        const initLat = typeof sceneData.initialLat === 'number' ? sceneData.initialLat : 0;
+        applyStartingPerspective(initLon, initLat);
+      }
 
       if (sceneData.panorama && sphereMesh && textureLoader) {
         textureLoader.load(
@@ -1360,9 +1365,10 @@
           currentTour = data.tour;
           safeSetText('hud-tour-title', currentTour.title || 'Tour');
         }
-        if (data.scene) {
+        // Only load scene if not already active to avoid resetting orientation on periodic acks
+        if (data.scene && (!currentScene || currentScene.id !== data.scene.id)) {
           loadScene(data.scene);
-        } else if (data.tour && data.tour.scenes && data.tour.scenes[0]) {
+        } else if (!currentScene && data.tour && data.tour.scenes && data.tour.scenes[0]) {
           loadScene(data.tour.scenes[0]);
         }
       } else if (data.type === 'TEACHER_CHANGE_TOUR' && data.tour) {
@@ -1375,310 +1381,163 @@
           loadScene(currentTour.scenes[0]);
         }
       } else if (data.type === 'TEACHER_CHANGE_SCENE' && data.sceneData) {
-        loadScene(data.sceneData);
+        if (!currentScene || currentScene.id !== data.sceneData.id) {
+          loadScene(data.sceneData);
+        }
       } else if (data.type === 'TEACHER_RECENTER_PERSPECTIVE') {
         const initLon = typeof data.initialLon === 'number' ? data.initialLon : 0;
         const initLat = typeof data.initialLat === 'number' ? data.initialLat : 0;
         applyStartingPerspective(initLon, initLat);
         showStudentToast('View centered by teacher');
       } else if (data.type === 'TEACHER_SPOTLIGHT') {
-        showSpotlightCard(data);
-      } else if (data.type === 'TEACHER_CLEAR_SPOTLIGHT') {
-        dismissSpotlightCard();
+        showSpotlightCard({
+          title: data.title || 'Curriculum Target',
+          text: data.text || '',
+          image: data.image || null,
+          phi: data.phi,
+          theta: data.theta
+        });
       } else if (data.type === 'TEACHER_IMPROMPTU_PING') {
         placeImpromptuMarker(data.phi, data.theta, data.title);
-      } else if (data.type === 'TEACHER_CLEAR_IMPROMPTU_PING') {
-        clearImpromptuMarker();
+      } else if (data.type === 'TEACHER_CLEAR_SPOTLIGHT' || data.type === 'TEACHER_CLEAR_IMPROMPTU_PING') {
         dismissSpotlightCard();
       }
     }
 
-    /* ---------------------------------------------------------
-       Gyroscope & Motion Tracking
-       --------------------------------------------------------- */
-    function requestMotionPermissionDirect(callback) {
-      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission()
-          .then((state) => {
-            if (state === 'granted') {
-              enableGyroscopeTracking();
-              if (callback) callback(true);
-            } else {
-              showMotionPermissionModal('Safari recorded this permission as denied.');
-              if (callback) callback(false);
-            }
-          })
-          .catch((err) => {
-            console.warn('requestPermission error:', err);
-            showMotionPermissionModal('Safari requires permission to track headset motion.');
-            if (callback) callback(false);
-          });
-      } else if (typeof window.DeviceOrientationEvent !== 'undefined') {
-        enableGyroscopeTracking();
-        if (callback) callback(true);
-      } else {
-        showStudentToast('Motion sensors not supported on this device.');
-        if (callback) callback(false);
+    function showStudentToast(message) {
+      const monoToast = document.getElementById('student-toast-mono');
+      const leftToast = document.getElementById('student-toast-stereo-left');
+      const rightToast = document.getElementById('student-toast-stereo-right');
+
+      if (monoToast) {
+        monoToast.textContent = message;
+        monoToast.classList.remove('opacity-0');
       }
-    }
-
-    function toggleGyroscopeTracking() {
-      if (isGyroscopeActive) {
-        disableGyroscopeTracking();
-        return;
+      if (leftToast) {
+        leftToast.textContent = message;
+        leftToast.classList.remove('opacity-0');
       }
-      requestMotionPermissionDirect();
-    }
-
-    function showMotionPermissionModal(reason) {
-      const modal = document.getElementById('motion-permission-modal');
-      const reasonEl = document.getElementById('motion-modal-reason');
-      if (reasonEl && reason) reasonEl.textContent = reason;
-      if (modal) modal.classList.remove('hidden');
-    }
-
-    function enableGyroscopeTracking() {
-      isGyroscopeActive = true;
-      deviceOrientationData = null;
-      yawOffset = 0;
-
-      window.addEventListener('deviceorientation', handleOrientation, true);
-      window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-      window.addEventListener('orientationchange', updateScreenOrientation, false);
-
-      const lbl = document.getElementById('lbl-gyro');
-      if (lbl) lbl.textContent = 'Touch Look';
-
-      const btn = document.getElementById('btn-toggle-gyro');
-      if (btn) {
-        btn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-400');
-        btn.classList.remove('bg-slate-900/90', 'text-slate-300');
+      if (rightToast) {
+        rightToast.textContent = message;
+        rightToast.classList.remove('opacity-0');
       }
 
-      showStudentToast('Motion Look active! Move your phone in space.');
-    }
-
-    function disableGyroscopeTracking() {
-      isGyroscopeActive = false;
-      deviceOrientationData = null;
-
-      window.removeEventListener('deviceorientation', handleOrientation, true);
-      window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
-      window.removeEventListener('orientationchange', updateScreenOrientation, false);
-
-      const lbl = document.getElementById('lbl-gyro');
-      if (lbl) lbl.textContent = 'Motion Look';
-
-      const btn = document.getElementById('btn-toggle-gyro');
-      if (btn) {
-        btn.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-400');
-        btn.classList.add('bg-slate-900/90', 'text-slate-300');
-      }
-
-      showStudentToast('Switched to drag / touch look.');
-    }
-
-    function handleOrientation(event) {
-      if (!isGyroscopeActive || !event) return;
-      if (event.alpha !== null && event.beta !== null && event.gamma !== null) {
-        deviceOrientationData = {
-          alpha: event.alpha,
-          beta: event.beta,
-          gamma: event.gamma
-        };
-      }
-    }
-
-    function requestLandscapeAndFullscreen() {
-      const docEl = document.documentElement;
-
-      if (docEl.requestFullscreen) {
-        docEl.requestFullscreen().catch(() => {});
-      } else if (docEl.webkitRequestFullscreen) {
-        docEl.webkitRequestFullscreen();
-      }
-
-      if (screen && screen.orientation && screen.orientation.lock) {
-        screen.orientation.lock('landscape').catch(() => {});
-      }
-    }
-
-    function showStudentToast(msg) {
-      const toastMono = document.getElementById('student-toast-mono');
-      const toastLeft = document.getElementById('student-toast-stereo-left');
-      const toastRight = document.getElementById('student-toast-stereo-right');
-
-      if (isVrSplitMode) {
-        if (toastLeft && toastRight) {
-          toastLeft.textContent = msg;
-          toastRight.textContent = msg;
-          toastLeft.classList.remove('hidden', 'opacity-0');
-          toastRight.classList.remove('hidden', 'opacity-0');
-          setTimeout(() => {
-            toastLeft.classList.add('opacity-0');
-            toastRight.classList.add('opacity-0');
-            setTimeout(() => {
-              toastLeft.classList.add('hidden');
-              toastRight.classList.add('hidden');
-            }, 300);
-          }, 3000);
-        }
-      } else {
-        if (toastMono) {
-          toastMono.textContent = msg;
-          toastMono.classList.remove('opacity-0');
-          setTimeout(() => { toastMono.classList.add('opacity-0'); }, 3000);
-        }
-      }
+      setTimeout(() => {
+        if (monoToast) monoToast.classList.add('opacity-0');
+        if (leftToast) leftToast.classList.add('opacity-0');
+        if (rightToast) rightToast.classList.add('opacity-0');
+      }, 3000);
     }
 
     /* ---------------------------------------------------------
-       UI Event Handlers
+       UI Setup & DOM Event Listeners
        --------------------------------------------------------- */
-    function setupUIHandlers() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const roomParam = urlParams.get('room');
-      const input = document.getElementById('input-room-code');
-      if (roomParam && input) {
-        input.value = roomParam.trim();
-      } else if (input && !input.value) {
-        input.value = '48291';
-      }
-
-      const randomNum = Math.floor(1 + Math.random() * 99);
-      studentName = 'Student ' + randomNum;
-
-      // Join button
+    function setupDOMHandlers() {
+      // Enter Room
       const btnJoin = document.getElementById('btn-join-room');
       if (btnJoin) {
-        btnJoin.onclick = () => {
-          const inputCode = document.getElementById('input-room-code');
-          const codeInput = inputCode ? inputCode.value.trim() : '48291';
+        btnJoin.onclick = async () => {
+          const input = document.getElementById('input-room-code');
+          const code = (input ? input.value : '48291').trim() || '48291';
 
-          if (!codeInput || codeInput.length < 4) {
-            const pill = document.getElementById('join-error-pill');
-            if (pill) pill.classList.remove('hidden');
-            safeSetText('join-error-msg', 'Please enter a valid 5-digit room code.');
-            return;
+          // 1. Request iOS DeviceOrientation Permission synchronously in user gesture
+          if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            try {
+              const res = await DeviceOrientationEvent.requestPermission();
+              if (res === 'granted') {
+                enableGyroTracking();
+              }
+            } catch (err) {
+              console.warn('Orientation request error:', err);
+            }
+          } else if (window.DeviceOrientationEvent) {
+            enableGyroTracking();
           }
 
-          requestLandscapeAndFullscreen();
+          // 2. Fullscreen and Landscape request
+          try {
+            if (document.documentElement.requestFullscreen) {
+              await document.documentElement.requestFullscreen();
+            } else if (document.documentElement.webkitRequestFullscreen) {
+              await document.documentElement.webkitRequestFullscreen();
+            }
+          } catch (e) {}
 
-          requestMotionPermissionDirect(() => {
-            initializePeerNetwork(codeInput);
-          });
+          try {
+            if (screen.orientation && screen.orientation.lock) {
+              await screen.orientation.lock('landscape');
+            }
+          } catch (e) {}
+
+          // 3. Initiate connection
+          initializePeerNetwork(code);
         };
       }
 
-      const inputRoomCode = document.getElementById('input-room-code');
-      if (inputRoomCode) {
-        inputRoomCode.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            const btn = document.getElementById('btn-join-room');
-            if (btn) btn.click();
-          }
-        });
-      }
-
-      const btnQuickSample = document.getElementById('btn-quick-sample-tour');
-      if (btnQuickSample) {
-        btnQuickSample.onclick = () => {
-          requestLandscapeAndFullscreen();
-          requestMotionPermissionDirect();
-          currentTour = DEFAULT_PRESET_TOUR;
-          currentRoomCode = 'PREVIEW';
-          onTeacherConnected();
-          loadScene(currentTour.scenes[0]);
+      // Quick Sample Tour
+      const btnSample = document.getElementById('btn-quick-sample-tour');
+      if (btnSample) {
+        btnSample.onclick = () => {
+          document.getElementById('screen-join').classList.add('hidden');
+          document.getElementById('screen-hud').classList.remove('hidden');
+          loadScene(DEFAULT_PRESET_TOUR.scenes[0]);
         };
       }
 
+      // Leave Room
       const btnLeave = document.getElementById('btn-leave-room');
       if (btnLeave) {
         btnLeave.onclick = () => {
           isConnectedToTeacher = false;
+          clearInterval(heartbeatInterval);
+          clearInterval(gazeBroadcastInterval);
           if (teacherConn) {
             try { teacherConn.close(); } catch (e) {}
+            teacherConn = null;
           }
-          const screenHud = document.getElementById('screen-hud');
-          const screenJoin = document.getElementById('screen-join');
-          if (screenHud) screenHud.classList.add('hidden');
-          if (screenJoin) screenJoin.classList.remove('hidden');
-          const icon = document.getElementById('btn-join-icon');
-          const text = document.getElementById('btn-join-text');
-          if (icon) icon.className = 'fa-solid fa-satellite-dish';
-          if (text) text.textContent = 'Enter Expedition';
+          document.getElementById('screen-hud').classList.add('hidden');
+          document.getElementById('screen-join').classList.remove('hidden');
         };
       }
 
-      const btnGyro = document.getElementById('btn-toggle-gyro');
-      if (btnGyro) {
-        btnGyro.onclick = () => toggleGyroscopeTracking();
-      }
-
+      // VR Stereo Mode Toggle
       const btnVr = document.getElementById('btn-toggle-cardboard-vr');
       if (btnVr) {
         btnVr.onclick = () => {
           isVrSplitMode = !isVrSplitMode;
           document.body.classList.toggle('vr-split-active', isVrSplitMode);
 
-          const compassMono = document.getElementById('compass-mono');
-          const compassLeft = document.getElementById('compass-stereo-left');
-          const compassRight = document.getElementById('compass-stereo-right');
+          const lbl = document.getElementById('lbl-vr-mode');
+          if (lbl) lbl.textContent = isVrSplitMode ? 'Exit VR' : 'Homido VR';
 
-          if (isVrSplitMode) {
-            if (!isGyroscopeActive) requestMotionPermissionDirect();
-            requestLandscapeAndFullscreen();
-            safeSetText('lbl-vr-mode', 'Exit VR');
-            btnVr.classList.replace('bg-indigo-600', 'bg-purple-600');
-            if (compassMono) {
-              compassMono.classList.add('hidden');
-              compassMono.style.opacity = '0';
-            }
-            if (compassLeft) compassLeft.classList.remove('hidden');
-            if (compassRight) compassRight.classList.remove('hidden');
-            showStudentToast('Homido Grab VR active');
-          } else {
-            safeSetText('lbl-vr-mode', 'Homido VR');
-            btnVr.classList.replace('bg-purple-600', 'bg-indigo-600');
-            if (compassMono) compassMono.classList.remove('hidden');
-            if (compassLeft) {
-              compassLeft.classList.add('hidden');
-              compassLeft.style.opacity = '0';
-            }
-            if (compassRight) {
-              compassRight.classList.add('hidden');
-              compassRight.style.opacity = '0';
-            }
-            onWindowResize();
-            showStudentToast('Exited VR Mode');
-          }
-          renderSpotlightVisibility();
-          updateCalibrationTargetPositions();
           onWindowResize();
+          renderSpotlightVisibility();
         };
       }
 
-      /* Optics & Calibration Handlers */
+      // Gyro Toggle
+      const btnGyro = document.getElementById('btn-toggle-gyro');
+      if (btnGyro) {
+        btnGyro.onclick = () => {
+          if (!isGyroscopeActive) {
+            enableGyroTracking();
+          } else {
+            disableGyroTracking();
+          }
+        };
+      }
+
+      // Homido Calibration Dialog
       const btnOptics = document.getElementById('btn-toggle-optics');
       const modalOptics = document.getElementById('homido-optics-modal');
       const btnCloseOptics = document.getElementById('btn-close-optics');
-      const sliderOpticalOffset = document.getElementById('slider-optical-offset');
-      const sliderFov = document.getElementById('slider-fov');
-      const btnResetOptics = document.getElementById('btn-reset-optics');
-      const btnToggleCrosshairs = document.getElementById('btn-toggle-crosshairs');
 
       if (btnOptics && modalOptics) {
         btnOptics.onclick = () => {
           modalOptics.classList.toggle('hidden');
-          const isVisible = !modalOptics.classList.contains('hidden');
-          if (isVisible && isVrSplitMode && showCalibrationCrosshairs) {
-            document.body.classList.add('show-calibration');
-          } else {
-            document.body.classList.remove('show-calibration');
-          }
+          document.body.classList.toggle('show-calibration', !modalOptics.classList.contains('hidden'));
         };
       }
-
       if (btnCloseOptics && modalOptics) {
         btnCloseOptics.onclick = () => {
           modalOptics.classList.add('hidden');
@@ -1686,21 +1545,25 @@
         };
       }
 
-      if (sliderOpticalOffset) {
-        sliderOpticalOffset.value = opticalPixelOffset;
+      // Lens Separation Slider
+      const sliderOffset = document.getElementById('slider-optical-offset');
+      if (sliderOffset) {
+        sliderOffset.value = opticalPixelOffset;
         safeSetText('lbl-optical-offset', `${opticalPixelOffset} px`);
-        sliderOpticalOffset.addEventListener('input', (e) => {
+        sliderOffset.oninput = (e) => {
           opticalPixelOffset = parseInt(e.target.value, 10);
           safeSetText('lbl-optical-offset', `${opticalPixelOffset} px`);
           localStorage.setItem('homido_optical_offset', opticalPixelOffset);
           updateCalibrationTargetPositions();
-        });
+        };
       }
 
+      // FOV Slider
+      const sliderFov = document.getElementById('slider-fov');
       if (sliderFov) {
         sliderFov.value = userFov;
         safeSetText('lbl-fov-val', `${userFov}°`);
-        sliderFov.addEventListener('input', (e) => {
+        sliderFov.oninput = (e) => {
           userFov = parseInt(e.target.value, 10);
           safeSetText('lbl-fov-val', `${userFov}°`);
           localStorage.setItem('homido_fov', userFov);
@@ -1708,103 +1571,90 @@
             camera.fov = userFov;
             camera.updateProjectionMatrix();
           }
-        });
+        };
       }
 
+      // Reset Optics
+      const btnResetOptics = document.getElementById('btn-reset-optics');
       if (btnResetOptics) {
         btnResetOptics.onclick = () => {
           opticalPixelOffset = 0;
           userFov = 92;
-          if (sliderOpticalOffset) sliderOpticalOffset.value = 0;
+          if (sliderOffset) sliderOffset.value = 0;
           if (sliderFov) sliderFov.value = 92;
           safeSetText('lbl-optical-offset', '0 px');
           safeSetText('lbl-fov-val', '92°');
           localStorage.removeItem('homido_optical_offset');
           localStorage.removeItem('homido_fov');
           if (camera) {
-            camera.fov = 92;
+            camera.fov = userFov;
             camera.updateProjectionMatrix();
           }
           updateCalibrationTargetPositions();
         };
       }
 
-      if (btnToggleCrosshairs) {
-        btnToggleCrosshairs.onclick = () => {
-          showCalibrationCrosshairs = !showCalibrationCrosshairs;
-          if (showCalibrationCrosshairs) {
-            document.body.classList.add('show-calibration');
-            btnToggleCrosshairs.textContent = 'Hide Alignment Dots';
-          } else {
-            document.body.classList.remove('show-calibration');
-            btnToggleCrosshairs.textContent = 'Show Alignment Dots';
+      // Dismiss Mono Spotlight
+      const btnDismissMono = document.getElementById('btn-dismiss-spotlight-mono');
+      if (btnDismissMono) {
+        btnDismissMono.onclick = () => dismissSpotlightCard();
+      }
+
+      // Center View on Spotlight Target
+      const btnAlign = document.getElementById('btn-align-view-spotlight');
+      if (btnAlign) {
+        btnAlign.onclick = () => {
+          if (activeSpotlightCoords) {
+            const targetLat = 90 - (activeSpotlightCoords.phi * (180 / Math.PI));
+            const targetLon = activeSpotlightCoords.theta * (180 / Math.PI);
+            smoothPanTo(targetLon, targetLat);
           }
         };
       }
 
-      const btnFullscreen = document.getElementById('btn-toggle-fullscreen');
-      if (btnFullscreen) {
-        btnFullscreen.onclick = () => {
-          requestLandscapeAndFullscreen();
-        };
-      }
-
-      const btnDismissSpotlightMono = document.getElementById('btn-dismiss-spotlight-mono');
-      if (btnDismissSpotlightMono) {
-        btnDismissSpotlightMono.onclick = () => dismissSpotlightCard();
-      }
-
-      const btnGrantDirect = document.getElementById('btn-grant-motion-direct');
-      if (btnGrantDirect) {
-        btnGrantDirect.onclick = () => {
-          requestMotionPermissionDirect((granted) => {
-            if (granted) {
-              const modal = document.getElementById('motion-permission-modal');
-              if (modal) modal.classList.add('hidden');
-            }
-          });
-        };
-      }
-
-      const btnDismissMotion = document.getElementById('btn-dismiss-motion-modal');
-      if (btnDismissMotion) {
-        btnDismissMotion.onclick = () => {
-          const modal = document.getElementById('motion-permission-modal');
-          if (modal) modal.classList.add('hidden');
-        };
-      }
-
-      const btnAlignSpotlight = document.getElementById('btn-align-view-spotlight');
-      if (btnAlignSpotlight) {
-        btnAlignSpotlight.onclick = () => {
-          if (!activeSpotlightCoords) return;
-          const targetLat = 90 - (activeSpotlightCoords.phi * (180 / Math.PI));
-          const targetLon = activeSpotlightCoords.theta * (180 / Math.PI);
-          smoothPanTo(targetLon, targetLat);
-        };
-      }
-
-      const spotlightImgMono = document.getElementById('spotlight-img-mono');
-      const lightboxModal = document.getElementById('spotlight-lightbox-modal');
+      // Lightbox Close
       const btnCloseLightbox = document.getElementById('btn-close-lightbox');
-
-      if (spotlightImgMono && lightboxModal) {
-        spotlightImgMono.onclick = () => {
-          lightboxModal.classList.remove('hidden');
-        };
+      const lightboxModal = document.getElementById('spotlight-lightbox-modal');
+      if (btnCloseLightbox && lightboxModal) {
+        btnCloseLightbox.onclick = () => lightboxModal.classList.add('hidden');
       }
 
-      if (btnCloseLightbox && lightboxModal) {
-        btnCloseLightbox.onclick = () => {
-          lightboxModal.classList.add('hidden');
-        };
+      // Tap on Mono Spotlight image to expand
+      const monoImg = document.getElementById('spotlight-img-mono');
+      if (monoImg && lightboxModal) {
+        monoImg.onclick = () => lightboxModal.classList.remove('hidden');
       }
     }
 
+    function enableGyroTracking() {
+      if (isGyroscopeActive) return;
+
+      const handleOrientation = (e) => {
+        if (e.alpha !== null) {
+          deviceOrientationData = {
+            alpha: e.alpha,
+            beta: e.beta,
+            gamma: e.gamma
+          };
+        }
+      };
+
+      window.addEventListener('deviceorientation', handleOrientation, true);
+      window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+      isGyroscopeActive = true;
+      safeSetText('lbl-gyro', 'Motion Active');
+    }
+
+    function disableGyroTracking() {
+      isGyroscopeActive = false;
+      deviceOrientationData = null;
+      safeSetText('lbl-gyro', 'Motion Look');
+    }
+
+    // App Initialization
     window.addEventListener('DOMContentLoaded', () => {
       initThreeEngine();
-      setupUIHandlers();
-      loadScene(DEFAULT_PRESET_TOUR.scenes[0]);
+      setupDOMHandlers();
     });
   </script>
 </body>
