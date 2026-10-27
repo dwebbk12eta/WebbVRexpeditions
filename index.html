@@ -973,8 +973,7 @@
        WebRTC Networking (Multi-Device Client)
        --------------------------------------------------------- */
     function initializePeerNetwork(roomCode) {
-      if (isConnecting || isConnectedToTeacher) return;
-      isConnecting = true;
+      if (isConnectedToTeacher) return;
 
       currentRoomCode = roomCode.trim();
       const teacherPeerId = `teacher-room-${currentRoomCode}`;
@@ -1003,7 +1002,8 @@
       clearTimeout(connectionTimeoutTimer);
 
       try {
-        peer = new Peer(studentId, {
+        // Pass undefined as first arg so PeerServer issues a guaranteed unique, non-colliding ID
+        peer = new Peer(undefined, {
           debug: 1,
           config: {
             iceServers: [
@@ -1016,14 +1016,14 @@
         });
 
         peer.on('open', (id) => {
-          safeSetText('network-client-id', `ID: ${id.substring(0, 15)}...`);
-          if (statusPill) safeSetText('join-status-msg', `2/3: Handshaking with teacher room ${currentRoomCode}...`);
+          studentId = id; // Broker assigned unique ID
+          safeSetText('network-client-id', `ID: ${id.substring(0, 12)}...`);
+          if (statusPill) safeSetText('join-status-msg', `2/3: Handshaking with room ${currentRoomCode}...`);
           connectToTeacherPeer(teacherPeerId);
         });
 
         peer.on('error', (err) => {
           console.warn('Peer error:', err);
-          isConnecting = false;
           if (err && err.type === 'peer-unavailable') {
             if (errPill) {
               errPill.classList.remove('hidden');
@@ -1036,7 +1036,6 @@
         });
       } catch (err) {
         console.warn('PeerJS init failed:', err);
-        isConnecting = false;
         setupLocalChannelSync();
       }
 
@@ -1062,7 +1061,6 @@
 
         teacherConn.on('close', () => {
           isConnectedToTeacher = false;
-          isConnecting = false;
           showStudentToast('Teacher disconnected.');
         });
 
@@ -1073,9 +1071,9 @@
         console.warn('Connect error:', e);
       }
 
+      // Timeout fallback if teacher isn't live
       connectionTimeoutTimer = setTimeout(() => {
-        if (!isConnectedToTeacher && isConnecting) {
-          isConnecting = false;
+        if (!isConnectedToTeacher) {
           const statusPill = document.getElementById('join-status-pill');
           const errPill = document.getElementById('join-error-pill');
           const btnIcon = document.getElementById('btn-join-icon');
@@ -1089,13 +1087,12 @@
           if (btnIcon) btnIcon.className = 'fa-solid fa-satellite-dish';
           if (btnText) btnText.textContent = 'Retry Connection';
         }
-      }, 10000);
+      }, 12000);
     }
 
     function onTeacherConnected() {
       if (isConnectedToTeacher) return;
       isConnectedToTeacher = true;
-      isConnecting = false;
       clearTimeout(connectionTimeoutTimer);
 
       requestScreenWakeLock();
@@ -1106,7 +1103,7 @@
       safeSetText('hud-room-code', `ROOM ${currentRoomCode}`);
 
       clearInterval(heartbeatInterval);
-      heartbeatInterval = setInterval(sendHeartbeat, 4000);
+      heartbeatInterval = setInterval(sendHeartbeat, 3000);
       sendHeartbeat();
 
       clearInterval(gazeBroadcastInterval);
@@ -1173,7 +1170,7 @@
     function handleTeacherIncomingPayload(data) {
       if (!data) return;
 
-      if (data.type === 'TEACHER_HANDSHAKE_ACK') {
+      if (data.type === 'TEACHER_HANDSHAKE_ACK' || data.type === 'TEACHER_CATCHUP_STATE') {
         if (!isConnectedToTeacher) {
           onTeacherConnected();
         }
@@ -1205,19 +1202,6 @@
         const card = document.getElementById('spotlight-card');
         if (!card || card.classList.contains('opacity-0')) {
           activeSpotlightCoords = null;
-        }
-      } else if (data.type === 'TEACHER_CATCHUP_STATE') {
-        if (!isConnectedToTeacher) {
-          onTeacherConnected();
-        }
-        if (data.tour) {
-          currentTour = data.tour;
-          safeSetText('hud-tour-title', currentTour.title || 'Tour');
-        }
-        if (data.scene) {
-          loadScene(data.scene);
-        } else if (data.tour && data.tour.scenes && data.tour.scenes[0]) {
-          loadScene(data.tour.scenes[0]);
         }
       }
     }
