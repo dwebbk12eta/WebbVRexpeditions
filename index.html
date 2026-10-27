@@ -58,8 +58,56 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      transition: opacity 0.25s ease, transform 0.15s ease;
+      transition: opacity 0.2s ease;
       opacity: 0;
+    }
+
+    .directional-compass-ring {
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      border: 3px solid rgba(245, 158, 11, 0.7);
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 25px rgba(245, 158, 11, 0.45);
+      position: relative;
+    }
+
+    .compass-arrow-rotor {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: absolute;
+      inset: 0;
+      will-change: transform;
+    }
+
+    .compass-arrow-rotor i {
+      color: #f59e0b;
+      font-size: 26px;
+      transform: translateY(-24px);
+      filter: drop-shadow(0 0 8px rgba(245, 158, 11, 1));
+    }
+
+    .compass-distance-pill {
+      margin-top: 10px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #fef3c7;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(245, 158, 11, 0.6);
+      padding: 3px 10px;
+      border-radius: 9999px;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
     }
 
     .directional-compass-ring {
@@ -737,8 +785,8 @@
       }
 
       if (impromptuMarker) {
-        const t = performance.now() * 0.003;
-        const pulse = 32 + Math.sin(t * 3) * 6;
+        const t = performance.now() * 0.004;
+        const pulse = 36 + Math.sin(t * 3) * 8;
         impromptuMarker.scale.set(pulse, pulse, 1);
       }
 
@@ -807,7 +855,7 @@
       const labelLeft = document.getElementById('compass-label-left');
       const labelRight = document.getElementById('compass-label-right');
 
-      // Hide all compasses if no active target is spotlighted
+      // Hide all compasses if no active target is spotlighted or camera is not ready
       if (!activeSpotlightCoords || !camera) {
         if (compassMono) compassMono.style.opacity = '0';
         if (compassLeft) compassLeft.style.opacity = '0';
@@ -815,7 +863,7 @@
         return;
       }
 
-      // Compute vector to active spotlight target
+      // Compute 3D position vector of the active target
       const rad = 450;
       const tPhi = activeSpotlightCoords.phi;
       const tTheta = activeSpotlightCoords.theta;
@@ -825,58 +873,57 @@
         rad * Math.sin(tPhi) * Math.cos(tTheta)
       );
 
-      // Camera forward vector and vector to target
+      // Ensure camera matrix is up to date
+      camera.updateMatrixWorld();
+
+      // Camera forward direction in world space
       const cameraDir = new THREE.Vector3();
       camera.getWorldDirection(cameraDir);
 
       const targetDir = targetPos.clone().normalize();
       const dotProduct = cameraDir.dot(targetDir);
 
-      // Target projection on screen
-      const projected = targetPos.clone().project(camera);
-      const isTargetInFront = projected.z < 1;
+      // Check if target is comfortably within center field of view (~20 degrees)
+      const isFacingTarget = dotProduct > 0.93;
 
-      // Check if target is comfortably inside the student's central field of view (~18 deg)
-      const isInFieldOfView = isTargetInFront && (dotProduct > 0.88);
-
-      if (isInFieldOfView) {
-        // Target is directly in view: hide arrow smoothly, letting student focus on the landmark
+      if (isFacingTarget) {
+        // Target is directly in front: fade compass out cleanly so student examines the landmark
         if (compassMono) compassMono.style.opacity = '0';
         if (compassLeft) compassLeft.style.opacity = '0';
         if (compassRight) compassRight.style.opacity = '0';
         return;
       }
 
-      // Target is out of view: calculate screen-space angle for the compass needle
-      // Transform target direction into camera local coordinates
-      const camInverse = camera.quaternion.clone().invert();
-      const localTargetDir = targetDir.clone().applyQuaternion(camInverse);
+      // Target is out of view: calculate 2D angle relative to camera view plane
+      const camQuatInverse = camera.quaternion.clone().invert();
+      const localTargetDir = targetDir.clone().applyQuaternion(camQuatInverse);
 
-      // Angle in 2D camera viewport (local X is right, local Y is up, local -Z is forward)
-      // When looking backwards (localTargetDir.z > 0), reflect X so the student turns the shorter route
-      let angleRad = Math.atan2(localTargetDir.y, -localTargetDir.x) - (Math.PI / 2);
+      // In Three.js camera space: +X is right, +Y is up, -Z is forward
+      // Calculate screen rotation angle: atan2(x, y) gives clockwise angle from top (+Y)
+      let screenAngleRad = Math.atan2(localTargetDir.x, localTargetDir.y);
       if (localTargetDir.z > 0) {
-        angleRad = Math.atan2(localTargetDir.y, localTargetDir.x) + (Math.PI / 2);
+        // Target is behind camera: guide student toward the nearest turn side
+        screenAngleRad = localTargetDir.x >= 0 ? Math.PI / 2 : -Math.PI / 2;
       }
 
-      // Compass needle uses FontAwesome fa-location-arrow (natively pointing up-right at 45 deg)
-      // Subtract 45 deg (PI/4) to align tip with angle
-      const rotationDeg = THREE.MathUtils.radToDeg(angleRad) - 45;
+      // FontAwesome fa-location-arrow natively points at -45 deg (up-right); align with tip
+      const rotationDeg = THREE.MathUtils.radToDeg(screenAngleRad) - 45;
       const transformCss = `rotate(${rotationDeg}deg)`;
 
       if (rotorMono) rotorMono.style.transform = transformCss;
       if (rotorLeft) rotorLeft.style.transform = transformCss;
       if (rotorRight) rotorRight.style.transform = transformCss;
 
-      // Calculate approximate angular distance (degrees) to guide student
-      const angularDistance = Math.round(THREE.MathUtils.radToDeg(Math.acos(Math.max(-1, Math.min(1, dotProduct)))));
-      const distanceLabel = `${angularDistance}° Turn`;
+      // Calculate angular distance to target in degrees
+      const clampedDot = Math.max(-1, Math.min(1, dotProduct));
+      const degreesToTurn = Math.round(THREE.MathUtils.radToDeg(Math.acos(clampedDot)));
+      const distanceLabel = `${degreesToTurn}° Turn`;
 
       if (labelMono) labelMono.textContent = distanceLabel;
       if (labelLeft) labelLeft.textContent = distanceLabel;
       if (labelRight) labelRight.textContent = distanceLabel;
 
-      // Reveal appropriate compass HUD based on display mode (monoscopic vs VR split)
+      // Reveal appropriate compass HUD based on display mode
       if (isVrSplitMode) {
         if (compassMono) compassMono.style.opacity = '0';
         if (compassLeft) compassLeft.style.opacity = '1';
@@ -986,25 +1033,83 @@
       const ctx = canvas.getContext('2d');
 
       ctx.strokeStyle = '#06b6d4';
-      ctx.lineWidth = 6;
+      ctx.lineWidth = 8;
       ctx.beginPath();
-      ctx.arc(64, 64, 50, 0, Math.PI * 2);
+      ctx.arc(64, 64, 52, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(64, 64, 38, 0, Math.PI * 2);
       ctx.stroke();
 
       ctx.fillStyle = '#22d3ee';
       ctx.beginPath();
-      ctx.arc(64, 64, 16, 0, Math.PI * 2);
+      ctx.arc(64, 64, 18, 0, Math.PI * 2);
       ctx.fill();
 
       const tex = new THREE.CanvasTexture(canvas);
       const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
       impromptuMarker = new THREE.Sprite(spriteMat);
       impromptuMarker.position.set(x, y, z);
-      impromptuMarker.scale.set(34, 34, 1);
+      impromptuMarker.scale.set(40, 40, 1);
 
       if (scene) scene.add(impromptuMarker);
       activeSpotlightCoords = { phi, theta };
-      showStudentToast('Teacher spotlighted a point of interest!');
+
+      showSpotlightCard({
+        title: title || 'Teacher Point of Interest',
+        text: 'The teacher has spotlighted a focal point in the environment. Look toward the beacon.',
+        image: null,
+        phi: phi,
+        theta: theta
+      });
+
+      showStudentToast('Teacher spotlighted a focal point!');
+    }
+
+    function clearImpromptuMarker() {
+      if (impromptuMarker && scene) {
+        scene.remove(impromptuMarker);
+        impromptuMarker = null;
+      }
+    }
+
+    function showSpotlightCard(data) {
+      if (!data) return;
+      activeSpotlightCoords = { phi: data.phi, theta: data.theta };
+
+      safeSetText('spotlight-target-title', data.title || 'Curriculum Target');
+      safeSetText('spotlight-target-text', data.text || '');
+
+      const imgBox = document.getElementById('spotlight-img-container');
+      const imgEl = document.getElementById('spotlight-target-img');
+      const lightboxImg = document.getElementById('lightbox-full-img');
+      const lightboxCaption = document.getElementById('lightbox-caption');
+
+      if (data.image && imgBox && imgEl) {
+        imgEl.src = data.image;
+        if (lightboxImg) lightboxImg.src = data.image;
+        if (lightboxCaption) lightboxCaption.textContent = data.title || '';
+        imgBox.classList.remove('hidden');
+      } else if (imgBox) {
+        imgBox.classList.add('hidden');
+      }
+
+      const card = document.getElementById('spotlight-card');
+      if (card) {
+        card.classList.remove('translate-y-32', 'opacity-0');
+      }
+    }
+
+    function dismissSpotlightCard() {
+      const card = document.getElementById('spotlight-card');
+      if (card) {
+        card.classList.add('translate-y-32', 'opacity-0');
+      }
+      activeSpotlightCoords = null;
+      clearImpromptuMarker();
     }
 
     function clearImpromptuMarker() {
@@ -1278,10 +1383,7 @@
         placeImpromptuMarker(data.phi, data.theta, data.title);
       } else if (data.type === 'TEACHER_CLEAR_IMPROMPTU_PING') {
         clearImpromptuMarker();
-        const card = document.getElementById('spotlight-card');
-        if (!card || card.classList.contains('opacity-0')) {
-          activeSpotlightCoords = null;
-        }
+        dismissSpotlightCard();
       }
     }
 
