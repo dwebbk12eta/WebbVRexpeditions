@@ -1426,7 +1426,10 @@
       } else if (data.type === 'TEACHER_CHANGE_TOUR' && data.tour) {
         currentTour = data.tour;
         safeSetText('hud-tour-title', currentTour.title || 'Tour');
-        if (currentTour.scenes && currentTour.scenes[0]) {
+        showStudentToast(`Teacher changed tour: ${currentTour.title}`);
+        if (data.scene) {
+          loadScene(data.scene);
+        } else if (currentTour.scenes && currentTour.scenes[0]) {
           loadScene(currentTour.scenes[0]);
         }
       } else if (data.type === 'TEACHER_CHANGE_SCENE' && data.sceneData) {
