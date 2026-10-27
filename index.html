@@ -521,6 +521,9 @@
     let deviceOrientationData = null;
     let screenOrientation = 0;
     let yawOffset = 0;
+    let hasCalibratedInitialHeading = false;
+    let pendingInitialLon = null;
+    let pendingInitialLat = null;
     const zee = new THREE.Vector3(0, 0, 1);
     const euler = new THREE.Euler();
     const q0 = new THREE.Quaternion();
@@ -702,6 +705,16 @@
         const alpha = deviceOrientationData.alpha ? deviceOrientationData.alpha : 0;
         const beta = deviceOrientationData.beta ? deviceOrientationData.beta : 0;
         const gamma = deviceOrientationData.gamma ? deviceOrientationData.gamma : 0;
+
+        // Perform one-time calibration on first orientation frame of a new scene
+        if (!hasCalibratedInitialHeading && pendingInitialLon !== null) {
+          const desiredYawRad = THREE.MathUtils.degToRad(pendingInitialLon);
+          const currentSensorAlphaRad = THREE.MathUtils.degToRad(alpha);
+          yawOffset = desiredYawRad - currentSensorAlphaRad;
+          hasCalibratedInitialHeading = true;
+          pendingInitialLon = null;
+          pendingInitialLat = null;
+        }
 
         setCameraQuaternionFromDevice(camera.quaternion, alpha, beta, gamma, screenOrientation);
 
@@ -892,16 +905,22 @@
     }
 
     function applyStartingPerspective(targetLon = 0, targetLat = 0) {
+      // In touch/drag mode: set the initial looking angle directly
       lon = targetLon;
       lat = targetLat;
 
-      // If motion tracking is active, calibrate the yaw offset so forward points at the teacher's target
-      if (isGyroscopeActive && deviceOrientationData) {
-        const alpha = deviceOrientationData.alpha ? deviceOrientationData.alpha : 0;
-        // Invert sensor alpha and align with the teacher's desired target longitude
-        const currentSensorYawRad = THREE.MathUtils.degToRad(alpha);
+      // In gyroscope mode: schedule a single baseline calibration offset
+      hasCalibratedInitialHeading = false;
+      pendingInitialLon = targetLon;
+      pendingInitialLat = targetLat;
+
+      if (isGyroscopeActive && deviceOrientationData && deviceOrientationData.alpha !== null) {
+        const currentSensorAlphaRad = THREE.MathUtils.degToRad(deviceOrientationData.alpha);
         const desiredYawRad = THREE.MathUtils.degToRad(targetLon);
-        yawOffset = desiredYawRad - currentSensorYawRad;
+        yawOffset = desiredYawRad - currentSensorAlphaRad;
+        hasCalibratedInitialHeading = true;
+        pendingInitialLon = null;
+        pendingInitialLat = null;
       }
     }
 
@@ -911,7 +930,7 @@
 
       safeSetText('hud-scene-title', `Scene: ${sceneData.title || 'Untitled'}`);
 
-      // Apply initial scene perspective if provided
+      // Apply initial scene perspective once on load
       const initLon = typeof sceneData.initialLon === 'number' ? sceneData.initialLon : 0;
       const initLat = typeof sceneData.initialLat === 'number' ? sceneData.initialLat : 0;
       applyStartingPerspective(initLon, initLat);
