@@ -47,8 +47,8 @@
       background: #000000;
     }
 
-    /* Central Floating Directional Guidance Indicator (Google Expeditions Style) */
-    .directional-compass-container {
+    /* Minimalist Floating Directional Arrow Indicator (No bulky circular ring) */
+    .directional-arrow-container {
       position: absolute;
       top: 50%;
       transform: translate(-50%, -50%);
@@ -58,111 +58,30 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      transition: opacity 0.2s ease;
+      transition: opacity 0.25s ease;
       opacity: 0;
     }
 
-    .directional-compass-ring {
-      width: 76px;
-      height: 76px;
-      border-radius: 50%;
-      border: 3px solid rgba(245, 158, 11, 0.7);
-      background: rgba(15, 23, 42, 0.65);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
+    .minimal-arrow-rotor {
+      width: 60px;
+      height: 60px;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 0 25px rgba(245, 158, 11, 0.45);
-      position: relative;
-    }
-
-    .compass-arrow-rotor {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: absolute;
-      inset: 0;
       will-change: transform;
     }
 
-    .compass-arrow-rotor i {
+    .minimal-arrow-rotor i {
       color: #f59e0b;
-      font-size: 26px;
-      transform: translateY(-24px);
-      filter: drop-shadow(0 0 8px rgba(245, 158, 11, 1));
+      font-size: 34px;
+      transform: translateY(-20px);
+      filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.95)) drop-shadow(0 0 2px #000000);
+      animation: arrow-bounce 1.2s infinite ease-in-out;
     }
 
-    .compass-distance-pill {
-      margin-top: 10px;
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: #fef3c7;
-      background: rgba(15, 23, 42, 0.9);
-      border: 1px solid rgba(245, 158, 11, 0.6);
-      padding: 3px 10px;
-      border-radius: 9999px;
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-    }
-
-    .directional-compass-ring {
-      width: 72px;
-      height: 72px;
-      border-radius: 50%;
-      border: 2px dashed rgba(245, 158, 11, 0.6);
-      background: rgba(15, 23, 42, 0.45);
-      backdrop-filter: blur(4px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 0 20px rgba(245, 158, 11, 0.35);
-      position: relative;
-    }
-
-    .compass-arrow-rotor {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: absolute;
-      inset: 0;
-      transition: transform 0.08s linear;
-    }
-
-    .compass-arrow-rotor i {
-      color: #f59e0b;
-      font-size: 24px;
-      transform: translateY(-22px);
-      filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.9));
-    }
-
-    .compass-distance-pill {
-      margin-top: 8px;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: #fef3c7;
-      background: rgba(15, 23, 42, 0.85);
-      border: 1px solid rgba(245, 158, 11, 0.5);
-      padding: 2px 8px;
-      border-radius: 9999px;
-      backdrop-blur: 4px;
-    }
-
-    @keyframes pulse-attention {
-      0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.8)); }
-      50% { transform: scale(1.18); filter: drop-shadow(0 0 16px rgba(245, 158, 11, 1)); }
-    }
-
-    .pulse-glow {
-      animation: pulse-attention 1.6s infinite ease-in-out;
+    @keyframes arrow-bounce {
+      0%, 100% { transform: translateY(-20px) scale(1); }
+      50% { transform: translateY(-27px) scale(1.12); }
     }
 
     /* Homido Grab Physical Center Divider Line */
@@ -248,35 +167,23 @@
   <div id="calib-left" class="calibration-target" style="left: 25%;"></div>
   <div id="calib-right" class="calibration-target" style="left: 75%;"></div>
 
-  <!-- CENTRAL DIRECTIONAL COMPASS HUD GUIDANCE (Monoscopic & Stereo) -->
-  <div id="compass-mono" class="directional-compass-container left-1/2">
-    <div class="directional-compass-ring">
-      <div id="compass-arrow-rotor-mono" class="compass-arrow-rotor">
-        <i class="fa-solid fa-location-arrow"></i>
-      </div>
-      <div class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></div>
+  <!-- CLEAN FLOATING DIRECTIONAL ARROW (Mono & Homido Stereo) -->
+  <div id="compass-mono" class="directional-arrow-container left-1/2">
+    <div id="compass-arrow-rotor-mono" class="minimal-arrow-rotor">
+      <i class="fa-solid fa-location-arrow"></i>
     </div>
-    <span id="compass-label-mono" class="compass-distance-pill">Follow Arrow</span>
   </div>
 
-  <div id="compass-stereo-left" class="directional-compass-container hidden" style="left: 25%;">
-    <div class="directional-compass-ring">
-      <div id="compass-arrow-rotor-left" class="compass-arrow-rotor">
-        <i class="fa-solid fa-location-arrow"></i>
-      </div>
-      <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+  <div id="compass-stereo-left" class="directional-arrow-container hidden" style="left: 25%;">
+    <div id="compass-arrow-rotor-left" class="minimal-arrow-rotor">
+      <i class="fa-solid fa-location-arrow"></i>
     </div>
-    <span id="compass-label-left" class="compass-distance-pill">Follow Arrow</span>
   </div>
 
-  <div id="compass-stereo-right" class="directional-compass-container hidden" style="left: 75%;">
-    <div class="directional-compass-ring">
-      <div id="compass-arrow-rotor-right" class="compass-arrow-rotor">
-        <i class="fa-solid fa-location-arrow"></i>
-      </div>
-      <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+  <div id="compass-stereo-right" class="directional-arrow-container hidden" style="left: 75%;">
+    <div id="compass-arrow-rotor-right" class="minimal-arrow-rotor">
+      <i class="fa-solid fa-location-arrow"></i>
     </div>
-    <span id="compass-label-right" class="compass-distance-pill">Follow Arrow</span>
   </div>
 
   <!-- ROTATE TO LANDSCAPE OVERLAY (for Cardboard/Homido Grab) -->
@@ -556,7 +463,10 @@
       </div>
     </div>
 
-    <div id="student-toast" class="fixed top-16 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-700/80 text-white px-4 py-2 rounded-full text-xs font-semibold shadow-2xl backdrop-blur transition-opacity duration-300 pointer-events-none opacity-0"></div>
+    <!-- STEREOSCOPIC POPUP NOTIFICATIONS (MONO & STEREO COMPLIANT) -->
+    <div id="student-toast-mono" class="fixed top-16 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-700/80 text-white px-4 py-2 rounded-full text-xs font-semibold shadow-2xl backdrop-blur transition-opacity duration-300 pointer-events-none opacity-0 z-40"></div>
+    <div id="student-toast-stereo-left" class="fixed top-14 w-[36%] max-w-[240px] -translate-x-1/2 bg-slate-900/95 border border-slate-700/80 text-white px-3 py-1.5 rounded-full text-[10px] text-center font-semibold shadow-2xl backdrop-blur transition-opacity duration-300 pointer-events-none opacity-0 z-40 hidden" style="left: 25%;"></div>
+    <div id="student-toast-stereo-right" class="fixed top-14 w-[36%] max-w-[240px] -translate-x-1/2 bg-slate-900/95 border border-slate-700/80 text-white px-3 py-1.5 rounded-full text-[10px] text-center font-semibold shadow-2xl backdrop-blur transition-opacity duration-300 pointer-events-none opacity-0 z-40 hidden" style="left: 75%;"></div>
   </div>
 
   <script>
@@ -867,6 +777,8 @@
       const compassRight = document.getElementById('compass-stereo-right');
       const cardLeft = document.getElementById('spotlight-card-stereo-left');
       const cardRight = document.getElementById('spotlight-card-stereo-right');
+      const toastLeft = document.getElementById('student-toast-stereo-left');
+      const toastRight = document.getElementById('student-toast-stereo-right');
 
       if (!leftTarget || !rightTarget) return;
 
@@ -881,6 +793,9 @@
 
       if (cardLeft) cardLeft.style.left = `${leftCenter}px`;
       if (cardRight) cardRight.style.left = `${rightCenter}px`;
+
+      if (toastLeft) toastLeft.style.left = `${leftCenter}px`;
+      if (toastRight) toastRight.style.left = `${rightCenter}px`;
     }
 
     function updateDirectionalAttentionPointers() {
@@ -891,10 +806,6 @@
       const rotorMono = document.getElementById('compass-arrow-rotor-mono');
       const rotorLeft = document.getElementById('compass-arrow-rotor-left');
       const rotorRight = document.getElementById('compass-arrow-rotor-right');
-
-      const labelMono = document.getElementById('compass-label-mono');
-      const labelLeft = document.getElementById('compass-label-left');
-      const labelRight = document.getElementById('compass-label-right');
 
       // Hide all compasses if no active target is spotlighted or camera is not ready
       if (!activeSpotlightCoords || !camera) {
@@ -928,7 +839,7 @@
       const isFacingTarget = dotProduct > 0.93;
 
       if (isFacingTarget) {
-        // Target is directly in front: fade compass out cleanly so student examines the landmark
+        // Target is directly in front: fade arrow out cleanly so student examines the landmark
         if (compassMono) compassMono.style.opacity = '0';
         if (compassLeft) compassLeft.style.opacity = '0';
         if (compassRight) compassRight.style.opacity = '0';
@@ -940,7 +851,6 @@
       const localTargetDir = targetDir.clone().applyQuaternion(camQuatInverse);
 
       // In Three.js camera space: +X is right, +Y is up, -Z is forward
-      // Calculate screen rotation angle: atan2(x, y) gives clockwise angle from top (+Y)
       let screenAngleRad = Math.atan2(localTargetDir.x, localTargetDir.y);
       if (localTargetDir.z > 0) {
         // Target is behind camera: guide student toward the nearest turn side
@@ -955,16 +865,7 @@
       if (rotorLeft) rotorLeft.style.transform = transformCss;
       if (rotorRight) rotorRight.style.transform = transformCss;
 
-      // Calculate angular distance to target in degrees
-      const clampedDot = Math.max(-1, Math.min(1, dotProduct));
-      const degreesToTurn = Math.round(THREE.MathUtils.radToDeg(Math.acos(clampedDot)));
-      const distanceLabel = `${degreesToTurn}° Turn`;
-
-      if (labelMono) labelMono.textContent = distanceLabel;
-      if (labelLeft) labelLeft.textContent = distanceLabel;
-      if (labelRight) labelRight.textContent = distanceLabel;
-
-      // Reveal appropriate compass HUD based on display mode
+      // Reveal appropriate arrow HUD based on display mode
       if (isVrSplitMode) {
         if (compassMono) compassMono.style.opacity = '0';
         if (compassLeft) compassLeft.style.opacity = '1';
@@ -1073,6 +974,7 @@
       canvas.height = 128;
       const ctx = canvas.getContext('2d');
 
+      // High-visibility glowing concentric circles
       ctx.strokeStyle = '#06b6d4';
       ctx.lineWidth = 8;
       ctx.beginPath();
@@ -1097,11 +999,13 @@
       impromptuMarker.scale.set(40, 40, 1);
 
       if (scene) scene.add(impromptuMarker);
+
+      // Retain persistent coordinates so indicator and card remain active
       activeSpotlightCoords = { phi, theta };
 
       showSpotlightCard({
         title: title || 'Teacher Point of Interest',
-        text: 'The teacher has spotlighted a focal point in the environment. Look toward the beacon.',
+        text: 'The teacher has spotlighted a focal point in the environment. Follow the arrow to align your view.',
         image: null,
         phi: phi,
         theta: theta
@@ -1557,11 +1461,32 @@
     }
 
     function showStudentToast(msg) {
-      const toast = document.getElementById('student-toast');
-      if (!toast) return;
-      toast.textContent = msg;
-      toast.classList.remove('opacity-0');
-      setTimeout(() => { toast.classList.add('opacity-0'); }, 3000);
+      const toastMono = document.getElementById('student-toast-mono');
+      const toastLeft = document.getElementById('student-toast-stereo-left');
+      const toastRight = document.getElementById('student-toast-stereo-right');
+
+      if (isVrSplitMode) {
+        if (toastLeft && toastRight) {
+          toastLeft.textContent = msg;
+          toastRight.textContent = msg;
+          toastLeft.classList.remove('hidden', 'opacity-0');
+          toastRight.classList.remove('hidden', 'opacity-0');
+          setTimeout(() => {
+            toastLeft.classList.add('opacity-0');
+            toastRight.classList.add('opacity-0');
+            setTimeout(() => {
+              toastLeft.classList.add('hidden');
+              toastRight.classList.add('hidden');
+            }, 300);
+          }, 3000);
+        }
+      } else {
+        if (toastMono) {
+          toastMono.textContent = msg;
+          toastMono.classList.remove('opacity-0');
+          setTimeout(() => { toastMono.classList.add('opacity-0'); }, 3000);
+        }
+      }
     }
 
     /* ---------------------------------------------------------
@@ -1662,20 +1587,30 @@
             requestLandscapeAndFullscreen();
             safeSetText('lbl-vr-mode', 'Exit VR');
             btnVr.classList.replace('bg-indigo-600', 'bg-purple-600');
-            if (compassMono) compassMono.classList.add('hidden');
+            if (compassMono) {
+              compassMono.classList.add('hidden');
+              compassMono.style.opacity = '0';
+            }
             if (compassLeft) compassLeft.classList.remove('hidden');
             if (compassRight) compassRight.classList.remove('hidden');
-            showStudentToast('Homido Grab VR active. Insert phone into viewer.');
+            showStudentToast('Homido Grab VR active');
           } else {
             safeSetText('lbl-vr-mode', 'Homido VR');
             btnVr.classList.replace('bg-purple-600', 'bg-indigo-600');
             if (compassMono) compassMono.classList.remove('hidden');
-            if (compassLeft) compassLeft.classList.add('hidden');
-            if (compassRight) compassRight.classList.add('hidden');
+            if (compassLeft) {
+              compassLeft.classList.add('hidden');
+              compassLeft.style.opacity = '0';
+            }
+            if (compassRight) {
+              compassRight.classList.add('hidden');
+              compassRight.style.opacity = '0';
+            }
             onWindowResize();
-            showStudentToast('Exited VR Mode.');
+            showStudentToast('Exited VR Mode');
           }
           renderSpotlightVisibility();
+          updateCalibrationTargetPositions();
           onWindowResize();
         };
       }
