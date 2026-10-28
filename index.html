@@ -625,9 +625,16 @@
       }
 
       if (impromptuMarker) {
-        const t = performance.now() * 0.004;
-        const pulse = 36 + Math.sin(t * 3) * 8;
+        const t = performance.now() * 0.005;
+        // Animated bounce & pulse scale
+        const pulse = 38 + Math.sin(t * 4) * 8;
         impromptuMarker.scale.set(pulse, pulse, 1);
+
+        // Radial bouncing motion (along the ray from center)
+        if (impromptuMarker.userData && impromptuMarker.userData.basePos) {
+          const bounceFactor = 1 + Math.sin(t * 6) * 0.035;
+          impromptuMarker.position.copy(impromptuMarker.userData.basePos).multiplyScalar(bounceFactor);
+        }
       }
 
       updateDirectionalAttentionPointers();
@@ -877,22 +884,30 @@
         canvas.height = 128;
         const ctx = canvas.getContext('2d');
 
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 6;
+        // Outer Orange Concentric Ring
+        ctx.strokeStyle = '#ea580c';
+        ctx.lineWidth = 7;
         ctx.beginPath();
         ctx.arc(64, 64, 48, 0, Math.PI * 2);
         ctx.stroke();
 
+        // Inner Bright Amber/Orange Core
+        ctx.fillStyle = '#f97316';
+        ctx.beginPath();
+        ctx.arc(64, 64, 22, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Center Accent Dot
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.arc(64, 64, 20, 0, Math.PI * 2);
+        ctx.arc(64, 64, 8, 0, Math.PI * 2);
         ctx.fill();
 
         const tex = new THREE.CanvasTexture(canvas);
         const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
         const sprite = new THREE.Sprite(spriteMat);
         sprite.position.set(x, y, z);
-        sprite.scale.set(30, 30, 1);
+        sprite.scale.set(32, 32, 1);
         sprite.userData = h;
         // Preprogrammed hotspots start invisible until teacher spotlights them
         sprite.visible = false;
@@ -914,21 +929,29 @@
       canvas.height = 128;
       const ctx = canvas.getContext('2d');
 
-      ctx.strokeStyle = '#ffffff';
+      // Outer Cyan Glowing Ring
+      ctx.strokeStyle = '#06b6d4';
       ctx.lineWidth = 8;
       ctx.beginPath();
       ctx.arc(64, 64, 52, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.strokeStyle = '#38bdf8';
+      // Middle Vibrant Cyan Ring
+      ctx.strokeStyle = '#22d3ee';
       ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.arc(64, 64, 38, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.fillStyle = '#ffffff';
+      // Solid Cyan Core with White Center Highlight
+      ctx.fillStyle = '#00f0ff';
       ctx.beginPath();
       ctx.arc(64, 64, 18, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(64, 64, 7, 0, Math.PI * 2);
       ctx.fill();
 
       const tex = new THREE.CanvasTexture(canvas);
@@ -936,6 +959,7 @@
       impromptuMarker = new THREE.Sprite(spriteMat);
       impromptuMarker.position.set(x, y, z);
       impromptuMarker.scale.set(40, 40, 1);
+      impromptuMarker.userData = { basePos: new THREE.Vector3(x, y, z) };
 
       if (scene) scene.add(impromptuMarker);
 
