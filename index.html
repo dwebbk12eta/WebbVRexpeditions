@@ -193,6 +193,31 @@
     </div>
   </div>
 
+  <!-- IN-VIEW ARTIFACT POPUP (Uncropped Image Display) -->
+  <!-- Monoscopic In-View Image -->
+  <div id="artifact-wrap-mono" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none transition-opacity duration-300 opacity-0 hidden">
+    <div class="max-w-[70vw] max-h-[60vh] bg-slate-950/80 border border-amber-500/50 rounded-2xl p-2 shadow-2xl backdrop-blur-md flex flex-col items-center">
+      <img id="artifact-img-mono" src="" alt="Artifact Target" class="max-w-full max-h-[50vh] object-contain rounded-xl shadow">
+      <p id="artifact-title-mono" class="text-xs font-bold text-amber-300 mt-1.5 px-2 text-center"></p>
+    </div>
+  </div>
+
+  <!-- Stereoscopic Left Eye In-View Image -->
+  <div id="artifact-wrap-left" class="fixed top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none transition-opacity duration-300 opacity-0 hidden" style="left: 25%;">
+    <div class="w-[36vw] max-h-[55vh] bg-slate-950/80 border border-amber-500/50 rounded-xl p-1.5 shadow-2xl backdrop-blur-md flex flex-col items-center">
+      <img id="artifact-img-left" src="" alt="Artifact Target" class="max-w-full max-h-[44vh] object-contain rounded-lg">
+      <p id="artifact-title-left" class="text-[10px] font-bold text-amber-300 mt-1 px-1 text-center truncate w-full"></p>
+    </div>
+  </div>
+
+  <!-- Stereoscopic Right Eye In-View Image -->
+  <div id="artifact-wrap-right" class="fixed top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none transition-opacity duration-300 opacity-0 hidden" style="left: 75%;">
+    <div class="w-[36vw] max-h-[55vh] bg-slate-950/80 border border-amber-500/50 rounded-xl p-1.5 shadow-2xl backdrop-blur-md flex flex-col items-center">
+      <img id="artifact-img-right" src="" alt="Artifact Target" class="max-w-full max-h-[44vh] object-contain rounded-lg">
+      <p id="artifact-title-right" class="text-[10px] font-bold text-amber-300 mt-1 px-1 text-center truncate w-full"></p>
+    </div>
+  </div>
+
   <!-- ROTATE TO LANDSCAPE OVERLAY (for Cardboard/Homido Grab) -->
   <div id="rotate-device-prompt" class="fixed inset-0 z-50 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center space-y-4">
     <div class="w-16 h-16 rounded-3xl bg-indigo-600/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center text-3xl animate-bounce">
@@ -389,6 +414,7 @@
     let currentTour = null;
     let currentScene = null;
     let activeSpotlightCoords = null;
+    let activeSpotlightData = null;
     let isVrSplitMode = false;
     let isGyroscopeActive = false;
     let wakeLockSentinel = null;
@@ -645,6 +671,8 @@
       const arrowRight = document.getElementById('arrow-wrap-right');
       const toastLeft = document.getElementById('student-toast-stereo-left');
       const toastRight = document.getElementById('student-toast-stereo-right');
+      const artifactLeft = document.getElementById('artifact-wrap-left');
+      const artifactRight = document.getElementById('artifact-wrap-right');
 
       if (!leftTarget || !rightTarget) return;
 
@@ -659,9 +687,12 @@
 
       if (toastLeft) toastLeft.style.left = `${leftCenter}px`;
       if (toastRight) toastRight.style.left = `${rightCenter}px`;
+
+      if (artifactLeft) artifactLeft.style.left = `${leftCenter}px`;
+      if (artifactRight) artifactRight.style.left = `${rightCenter}px`;
     }
 
-    /* Track Active Hotspot or Focal Point with the Plain White Arrow */
+    /* Track Active Hotspot or Focal Point with the Plain White Arrow & In-View Image */
     function updateDirectionalAttentionPointers() {
       const arrowMono = document.getElementById('arrow-wrap-mono');
       const arrowLeft = document.getElementById('arrow-wrap-left');
@@ -671,11 +702,16 @@
       const rotorLeft = document.getElementById('arrow-rotor-left');
       const rotorRight = document.getElementById('arrow-rotor-right');
 
-      // If no hotspot or focal point is active, keep arrows hidden
+      const artMono = document.getElementById('artifact-wrap-mono');
+      const artLeft = document.getElementById('artifact-wrap-left');
+      const artRight = document.getElementById('artifact-wrap-right');
+
+      // If no hotspot or focal point is active, hide everything
       if (!activeSpotlightCoords || !camera) {
         if (arrowMono) arrowMono.style.opacity = '0';
         if (arrowLeft) arrowLeft.style.opacity = '0';
         if (arrowRight) arrowRight.style.opacity = '0';
+        hideArtifactDisplay();
         return;
       }
 
@@ -698,15 +734,26 @@
       const targetDir = targetPos.clone().normalize();
       const dotProduct = cameraDir.dot(targetDir);
 
-      // Disappear when the target enters the student's field of view (~18-20 degrees)
+      // In view when target is within ~18-20 degrees of center gaze
       const isFacingTarget = dotProduct > 0.94;
 
       if (isFacingTarget) {
+        // Hide guidance arrows
         if (arrowMono) arrowMono.style.opacity = '0';
         if (arrowLeft) arrowLeft.style.opacity = '0';
         if (arrowRight) arrowRight.style.opacity = '0';
+
+        // Show uncropped artifact picture if available
+        if (activeSpotlightData && activeSpotlightData.image) {
+          showArtifactDisplay();
+        } else {
+          hideArtifactDisplay();
+        }
         return;
       }
+
+      // Facing away: Hide artifact picture and show the guidance arrow
+      hideArtifactDisplay();
 
       // Calculate directional rotation angle on screen
       const camQuatInverse = camera.quaternion.clone().invert();
@@ -737,6 +784,51 @@
       }
     }
 
+    function showArtifactDisplay() {
+      const artMono = document.getElementById('artifact-wrap-mono');
+      const artLeft = document.getElementById('artifact-wrap-left');
+      const artRight = document.getElementById('artifact-wrap-right');
+
+      if (isVrSplitMode) {
+        if (artMono) { artMono.classList.add('hidden'); artMono.style.opacity = '0'; }
+        if (artLeft) { artLeft.classList.remove('hidden'); artLeft.style.opacity = '1'; }
+        if (artRight) { artRight.classList.remove('hidden'); artRight.style.opacity = '1'; }
+      } else {
+        if (artMono) { artMono.classList.remove('hidden'); artMono.style.opacity = '1'; }
+        if (artLeft) { artLeft.classList.add('hidden'); artLeft.style.opacity = '0'; }
+        if (artRight) { artRight.classList.add('hidden'); artRight.style.opacity = '0'; }
+      }
+    }
+
+    function hideArtifactDisplay() {
+      const artMono = document.getElementById('artifact-wrap-mono');
+      const artLeft = document.getElementById('artifact-wrap-left');
+      const artRight = document.getElementById('artifact-wrap-right');
+
+      if (artMono) artMono.style.opacity = '0';
+      if (artLeft) artLeft.style.opacity = '0';
+      if (artRight) artRight.style.opacity = '0';
+    }
+
+    function setArtifactData(data) {
+      const imgMono = document.getElementById('artifact-img-mono');
+      const titleMono = document.getElementById('artifact-title-mono');
+      const imgLeft = document.getElementById('artifact-img-left');
+      const titleLeft = document.getElementById('artifact-title-left');
+      const imgRight = document.getElementById('artifact-img-right');
+      const titleRight = document.getElementById('artifact-title-right');
+
+      const src = (data && data.image) ? data.image : '';
+      const title = (data && data.title) ? data.title : '';
+
+      if (imgMono) imgMono.src = src;
+      if (titleMono) titleMono.textContent = title;
+      if (imgLeft) imgLeft.src = src;
+      if (titleLeft) titleLeft.textContent = title;
+      if (imgRight) imgRight.src = src;
+      if (titleRight) titleRight.textContent = title;
+    }
+
     function loadScene(sceneData) {
       if (!sceneData) return;
       currentScene = sceneData;
@@ -761,7 +853,7 @@
 
       renderHotspots(sceneData.hotspots || []);
       clearImpromptuMarker();
-      activeSpotlightCoords = null;
+      clearTargetGuide();
     }
 
     function renderHotspots(hotspots) {
@@ -802,6 +894,8 @@
         sprite.position.set(x, y, z);
         sprite.scale.set(30, 30, 1);
         sprite.userData = h;
+        // Preprogrammed hotspots start invisible until teacher spotlights them
+        sprite.visible = false;
 
         hotspotGroup.add(sprite);
       });
@@ -847,6 +941,8 @@
 
       // Target active for plain white arrow guidance
       activeSpotlightCoords = { phi, theta };
+      activeSpotlightData = { title, image: null };
+      setArtifactData(activeSpotlightData);
       showStudentToast('Teacher marked a focal point');
     }
 
@@ -857,13 +953,35 @@
       }
     }
 
-    function activateTargetGuide(phi, theta) {
+    function activateTargetGuide(phi, theta, spotlightData = null) {
       activeSpotlightCoords = { phi, theta };
+      activeSpotlightData = spotlightData;
+      setArtifactData(spotlightData);
+
+      // Make the corresponding hotspot marker visible on the 360 sphere
+      if (hotspotGroup) {
+        hotspotGroup.children.forEach(child => {
+          if (child.userData) {
+            const isMatch = Math.abs(child.userData.phi - phi) < 0.05 && Math.abs(child.userData.theta - theta) < 0.05;
+            child.visible = isMatch;
+          }
+        });
+      }
     }
 
     function clearTargetGuide() {
       activeSpotlightCoords = null;
+      activeSpotlightData = null;
       clearImpromptuMarker();
+      hideArtifactDisplay();
+      setArtifactData(null);
+
+      // Hide all hotspot markers again
+      if (hotspotGroup) {
+        hotspotGroup.children.forEach(child => {
+          child.visible = false;
+        });
+      }
     }
 
     /* ---------------------------------------------------------
@@ -1092,7 +1210,10 @@
           loadScene(data.sceneData);
         }
       } else if (data.type === 'TEACHER_SPOTLIGHT') {
-        activateTargetGuide(data.phi, data.theta);
+        activateTargetGuide(data.phi, data.theta, {
+          title: data.title,
+          image: data.image
+        });
       } else if (data.type === 'TEACHER_IMPROMPTU_PING') {
         placeImpromptuMarker(data.phi, data.theta, data.title);
       } else if (data.type === 'TEACHER_CLEAR_SPOTLIGHT' || data.type === 'TEACHER_CLEAR_IMPROMPTU_PING') {
@@ -1213,6 +1334,7 @@
             if (arrowRight) arrowRight.classList.add('hidden');
           }
 
+          updateCalibrationTargetPositions();
           onWindowResize();
         };
       }
