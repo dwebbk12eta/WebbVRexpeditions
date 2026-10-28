@@ -1,0 +1,2977 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Expeditions Teacher Studio</title>
+
+  <!-- PWA & Standalone Installation Meta Tags -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Teacher Studio">
+  <meta name="theme-color" content="#020617">
+  <link rel="manifest" href="teacher-manifest.json">
+  <link rel="apple-touch-icon" href="https://placehold.co/192x192/4f46e5/ffffff?text=Studio">
+
+  <!-- Tailwind CSS & FontAwesome Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- PeerJS (WebRTC Realtime Classroom Mesh) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+
+  <!-- Three.js (Core 3D Engine for 360 Panoramas and Hotspots) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      background: #020617;
+    }
+
+    #webgl-canvas-container {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      background: #020617;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(99, 102, 241, 0.5);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(99, 102, 241, 0.8);
+    }
+
+    .drawer-transition {
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+    }
+
+    .glass-modal {
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans h-full overflow-hidden select-none">
+
+  <!-- 3D WEBGL PANORAMA CANVAS CONTAINER -->
+  <div id="webgl-canvas-container"></div>
+
+  <!-- VIEW 1: BIMODAL LANDING PORTAL (Delivery vs Studio) -->
+  <div id="view-portal" class="fixed inset-0 z-30 flex flex-col bg-slate-950/95 backdrop-blur-xl overflow-y-auto">
+    <!-- Top Header -->
+    <header class="border-b border-slate-800/80 px-6 py-4 flex flex-wrap items-center justify-between gap-4 bg-slate-950/80 sticky top-0 z-20 backdrop-blur-md">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-600/30 text-white text-lg">
+          <i class="fa-solid fa-graduation-cap"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-black text-white tracking-tight flex items-center gap-2">
+            <span>Expeditions VR</span>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-400 bg-indigo-950/80 border border-indigo-500/30 px-2 py-0.5 rounded-full">Teacher Edition</span>
+          </h1>
+          <p class="text-xs text-slate-400">Classroom Virtual Reality Expedition Leader</p>
+        </div>
+      </div>
+
+      <!-- Cloud Sync & Mode Switcher Controls -->
+      <div class="flex items-center gap-3">
+        <!-- Live Cloud Status Pill -->
+        <div id="portal-cloud-status" class="bg-slate-900 border border-slate-700/80 text-slate-400 px-3 py-1.5 rounded-xl text-xs flex items-center gap-2 font-mono">
+          <i class="fa-solid fa-cloud text-slate-500" id="portal-cloud-icon"></i>
+          <span id="portal-cloud-text">Connecting to Drive...</span>
+        </div>
+
+        <!-- Offline / LAN Network Settings Button -->
+        <button id="btn-toggle-network-settings" class="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95" title="Classroom Network Settings (Online / Offline)">
+          <i class="fa-solid fa-network-wired text-indigo-400 text-xs"></i>
+          <span id="lbl-network-mode">Cloud Mesh</span>
+        </button>
+
+        <!-- Manual Drive Sync Button -->
+        <button id="portal-btn-sync-cloud" class="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95" title="Force Refresh from Google Drive">
+          <i class="fa-solid fa-arrows-rotate text-[11px]" id="portal-sync-spinner"></i>
+          <span>Sync Drive</span>
+        </button>
+
+        <!-- Mode Toggle Tabs (Delivery vs Studio) -->
+        <div class="bg-slate-900 border border-slate-800 p-1 rounded-2xl flex items-center gap-1">
+          <button id="btn-tab-delivery" class="px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-indigo-600 text-white shadow-md shadow-indigo-600/30">
+            <i class="fa-solid fa-chalkboard-user"></i>
+            <span>Tour Delivery</span>
+          </button>
+          <button id="btn-tab-studio" class="px-4 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition flex items-center gap-2">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <span>Tour Studio</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto w-full p-6 sm:p-8 flex-1 flex flex-col gap-8">
+      <!-- Active Mode Banner -->
+      <section id="portal-banner" class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-gradient-to-r from-indigo-950/40 via-purple-950/30 to-slate-900/40 border border-indigo-500/20 rounded-3xl p-6 sm:p-8">
+        <div class="space-y-2 max-w-2xl">
+          <div class="inline-flex items-center gap-2 text-xs font-bold text-indigo-400 bg-indigo-950/80 border border-indigo-500/30 px-3 py-1 rounded-full uppercase tracking-wider">
+            <i class="fa-solid fa-broadcast-tower" id="banner-icon"></i>
+            <span id="banner-tag">Live Classroom Broadcasting</span>
+          </div>
+          <h2 id="banner-title" class="text-2xl sm:text-3xl font-black text-white">Lead an Immersive Virtual Field Trip</h2>
+          <p id="banner-desc" class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+            Select an expedition below to launch live broadcasting. Students connect on their Chromebooks, tablets, or phones using your 5-digit classroom code without logins.
+          </p>
+        </div>
+
+        <div id="banner-action-area" class="hidden items-center gap-3">
+          <button id="btn-banner-action" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs sm:text-sm font-bold px-5 py-3 rounded-2xl shadow-xl shadow-purple-600/30 flex items-center gap-2 transition active:scale-95">
+            <i class="fa-solid fa-plus" id="btn-banner-action-icon"></i>
+            <span id="btn-banner-action-text">Create New Tour</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Search and Filter Row -->
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-2">
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <span id="library-heading">Expedition Library</span>
+            <span id="tours-count-badge" class="bg-slate-800 text-slate-300 text-xs px-2.5 py-0.5 rounded-full font-mono font-normal">3 Tours</span>
+          </h3>
+        </div>
+
+        <div class="flex items-center gap-3 flex-1 sm:flex-initial">
+          <div class="relative flex-1 sm:w-64">
+            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+            <input type="text" id="input-search-tours" placeholder="Filter expeditions..." class="w-full bg-slate-900 border border-slate-800 focus:border-indigo-500 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition">
+          </div>
+          <button id="btn-create-tour-top" class="hidden bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-2 active:scale-95 shadow-lg shadow-purple-600/20">
+            <i class="fa-solid fa-plus"></i>
+            <span>Create New Tour</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tour Card Grid -->
+      <div id="tours-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+    </main>
+
+    <!-- Portal Footer -->
+    <footer class="border-t border-slate-900 px-6 py-4 text-center text-xs text-slate-500 bg-slate-950/90">
+      Expeditions VR • Google Drive Cloud Engine & WebRTC Classroom Mesh
+    </footer>
+  </div>
+
+  <!-- VIEW 2: ACTIVE PRESENTER HUD (Live Broadcast & Studio Workspace) -->
+  <div id="view-hud" class="fixed inset-0 z-20 pointer-events-none hidden">
+    <!-- Top Presenter Header Bar -->
+    <header class="pointer-events-auto p-3 sm:p-4 flex items-center justify-between bg-gradient-to-b from-slate-950/90 via-slate-950/60 to-transparent">
+      <div class="flex items-center gap-2 sm:gap-3 truncate">
+        <button id="btn-back-portal" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 backdrop-blur-md" title="Exit to Main Menu">
+          <i class="fa-solid fa-house text-[11px]"></i>
+          <span class="hidden sm:inline">Portal</span>
+        </button>
+
+        <!-- Room Code & Connection Pill -->
+        <div id="hud-room-badge" class="bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 backdrop-blur-md">
+          <i class="fa-solid fa-tower-broadcast text-emerald-400 text-[10px]"></i>
+          <span id="hud-room-code">ROOM 48291</span>
+        </div>
+
+        <!-- WebRTC Live Signaling Indicator Pill -->
+        <div id="hud-signal-badge" class="bg-slate-900/90 border border-slate-700/80 text-slate-400 px-2 py-1 rounded-xl text-[11px] font-mono flex items-center gap-1.5 backdrop-blur-md">
+          <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse" id="hud-signal-dot"></span>
+          <span id="hud-signal-text" class="hidden md:inline">Signal: Initializing...</span>
+        </div>
+
+        <!-- Student Count Indicator -->
+        <div id="hud-students-badge" class="bg-slate-900/90 border border-slate-700/80 text-slate-300 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md">
+          <i class="fa-solid fa-users text-indigo-400 text-[11px]"></i>
+          <span id="hud-students-count">0 Students</span>
+        </div>
+
+        <!-- Quick Tour Switcher Button (Seamless transition without disconnecting) -->
+        <button id="btn-quick-switch-tour" class="bg-slate-900/90 hover:bg-slate-800 border border-indigo-500/30 text-indigo-300 hover:text-white px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 backdrop-blur-md" title="Switch Expedition without disconnecting students">
+          <i class="fa-solid fa-layer-group text-[10px]"></i>
+          <span class="hidden lg:inline">Switch Tour</span>
+        </button>
+
+        <!-- Tour & Scene Titles -->
+        <div class="flex flex-col truncate pl-1">
+          <span id="hud-tour-title" class="text-xs sm:text-sm font-bold text-white truncate">Apollo 11</span>
+          <span id="hud-scene-title" class="text-[10px] sm:text-xs text-slate-300 truncate">Scene 1</span>
+        </div>
+      </div>
+
+      <!-- Right Action Buttons -->
+      <div class="flex items-center gap-2">
+        <button id="btn-force-save-drive" class="hidden bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 active:scale-95 shadow-md shadow-emerald-600/30 backdrop-blur-md" title="Save to Drive (Ctrl+S)">
+          <i class="fa-solid fa-cloud-arrow-up text-xs" id="btn-force-save-icon"></i>
+          <span id="btn-force-save-text">Save to Drive</span>
+        </button>
+
+        <button id="btn-studio-delete-tour" class="hidden bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow-md backdrop-blur-md" title="Delete entire expedition">
+          <i class="fa-solid fa-trash text-[11px]"></i>
+          <span class="hidden md:inline">Delete Tour</span>
+        </button>
+
+        <div id="hud-mode-pill" class="bg-purple-950/80 border border-purple-500/40 text-purple-300 px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 backdrop-blur-md">
+          <i class="fa-solid fa-chalkboard-user text-[11px]"></i>
+          <span id="hud-mode-label">Presenter Mode</span>
+        </div>
+
+        <button id="btn-studio-add-scene" class="hidden bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow-md shadow-indigo-600/30 backdrop-blur-md">
+          <i class="fa-solid fa-plus text-[10px]"></i>
+          <span class="hidden sm:inline">Add Scene</span>
+        </button>
+
+        <button id="btn-toggle-drawer" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow-md shadow-indigo-600/30 backdrop-blur-md">
+          <i class="fa-solid fa-book-open text-[11px]"></i>
+          <span class="hidden sm:inline">Teaching Guide</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Reticle Crosshair for Hotspot Targeting -->
+    <div id="center-reticle" class="pointer-events-none fixed inset-0 flex items-center justify-center z-10 opacity-30 transition-opacity duration-200">
+      <div class="w-6 h-6 border-2 border-indigo-400 rounded-full flex items-center justify-center">
+        <div class="w-1.5 h-1.5 bg-amber-400 rounded-full"></div>
+      </div>
+    </div>
+
+    <!-- Double Click Hint -->
+    <div class="pointer-events-none fixed top-16 left-1/2 -translate-x-1/2 z-10 bg-slate-950/70 border border-slate-700/60 text-slate-300 text-[11px] px-3 py-1 rounded-full backdrop-blur-md shadow-lg flex items-center gap-2">
+      <i class="fa-solid fa-hand-pointer text-indigo-400 text-xs"></i>
+      <span id="hud-interaction-hint">Double-click anywhere to spotlight a focal point for students</span>
+    </div>
+
+    <!-- Bottom Floating Action Bar -->
+    <footer class="pointer-events-auto fixed bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-slate-950/90 border border-slate-800/90 p-1.5 rounded-2xl shadow-2xl backdrop-blur-xl">
+      <button id="btn-prev-scene" class="bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white w-9 h-9 rounded-xl flex items-center justify-center transition active:scale-95 disabled:opacity-30 disabled:pointer-events-none" title="Previous Scene">
+        <i class="fa-solid fa-chevron-left text-xs"></i>
+      </button>
+
+      <button id="btn-scene-picker" class="bg-slate-900 hover:bg-slate-800 text-white px-3 h-9 rounded-xl text-xs font-bold flex items-center gap-2 transition active:scale-95">
+        <i class="fa-solid fa-images text-indigo-400 text-xs"></i>
+        <span id="btn-scene-picker-label">Scene 1 of 1</span>
+      </button>
+
+      <button id="btn-next-scene" class="bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white w-9 h-9 rounded-xl flex items-center justify-center transition active:scale-95 disabled:opacity-30 disabled:pointer-events-none" title="Next Scene">
+        <i class="fa-solid fa-chevron-right text-xs"></i>
+      </button>
+
+      <button id="btn-studio-delete-scene" class="hidden bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 px-2.5 h-9 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95" title="Delete current scene">
+        <i class="fa-solid fa-trash-can text-xs"></i>
+        <span class="hidden sm:inline">Delete Scene</span>
+      </button>
+
+      <div class="h-5 w-px bg-slate-800 mx-0.5"></div>
+
+      <button id="btn-clear-impromptu" class="hidden bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 px-2.5 h-9 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95">
+        <i class="fa-solid fa-xmark text-xs"></i>
+        <span>Clear Spotlight</span>
+      </button>
+
+      <button id="btn-studio-drop-target" class="hidden bg-indigo-600 hover:bg-indigo-500 text-white px-3 h-9 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow-md shadow-indigo-600/30">
+        <i class="fa-solid fa-crosshairs text-xs"></i>
+        <span>Add Target Here</span>
+      </button>
+    </footer>
+
+    <!-- Slide-Out Teaching Guide Drawer -->
+    <aside id="script-drawer" class="pointer-events-auto fixed top-0 right-0 bottom-0 w-full sm:w-[420px] max-w-full bg-slate-950/95 border-l border-slate-800/90 shadow-2xl backdrop-blur-2xl z-30 flex flex-col drawer-transition translate-x-full">
+      <div class="p-4 sm:p-5 border-b border-slate-800/80 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <i class="fa-solid fa-book-bookmark text-xs"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">Teaching Guide</h3>
+            <p class="text-[11px] text-slate-400">Curriculum Script & Attention Targets</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- Text Size Adjuster Control -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-0.5 flex items-center gap-0.5">
+            <button id="btn-font-decrease" class="w-7 h-7 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 flex items-center justify-center text-xs font-bold transition active:scale-95" title="Decrease font size">
+              <span class="text-[10px]">A-</span>
+            </button>
+            <button id="btn-font-reset" class="px-1.5 h-7 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 flex items-center justify-center text-[10px] font-mono font-semibold transition" title="Reset font size">
+              <span id="lbl-font-scale">100%</span>
+            </button>
+            <button id="btn-font-increase" class="w-7 h-7 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 flex items-center justify-center text-xs font-bold transition active:scale-95" title="Increase font size">
+              <span class="text-xs">A+</span>
+            </button>
+          </div>
+
+          <button id="btn-close-drawer" class="text-slate-400 hover:text-white w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center transition active:scale-95">
+            <i class="fa-solid fa-xmark text-xs"></i>
+          </button>
+        </div>
+      </div>
+
+      <div id="drawer-scrollable-body" class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-6">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Active Scene</span>
+            <button id="btn-drawer-delete-scene" class="hidden text-rose-400 hover:text-rose-300 text-xs flex items-center gap-1 font-semibold transition" title="Delete this scene">
+              <i class="fa-solid fa-trash-can text-[10px]"></i>
+              <span>Delete Scene</span>
+            </button>
+          </div>
+          <h4 id="drawer-scene-title" class="text-base font-bold text-white">Scene Title</h4>
+          <div class="max-h-64 overflow-y-auto pr-1">
+            <p id="drawer-scene-script" class="text-sm text-slate-200 leading-relaxed whitespace-pre-line">Talking points and script will appear here.</p>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h5 class="text-xs font-bold text-white flex items-center gap-1.5">
+              <i class="fa-solid fa-bullseye text-amber-400 text-xs"></i>
+              <span>Scene Targets & Discussion Points</span>
+            </h5>
+            <span id="drawer-targets-count" class="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded-full border border-slate-800">0 Points</span>
+          </div>
+          <div id="drawer-targets-list" class="space-y-2.5"></div>
+        </div>
+
+        <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-slate-300 flex items-center gap-1.5">
+              <i class="fa-solid fa-wifi text-emerald-400 text-[10px]"></i>
+              <span>Connected Students</span>
+            </span>
+            <span id="drawer-students-count" class="font-mono text-indigo-400 font-bold">0 Active</span>
+          </div>
+          <p class="text-[11px] text-slate-400">
+            Students join via the Student Viewer using room code <strong id="drawer-code-bold" class="text-indigo-300 font-mono">48291</strong>.
+          </p>
+          <div id="drawer-students-list" class="flex flex-wrap gap-1.5 pt-1">
+            <span class="text-[11px] text-slate-500 italic">No students currently connected</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-4 border-t border-slate-800/80 bg-slate-950/80 flex items-center justify-between gap-3">
+        <button id="btn-drawer-sync-drive" class="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold py-2 rounded-xl transition flex items-center justify-center gap-1.5">
+          <i class="fa-solid fa-cloud-arrow-up text-xs"></i>
+          <span>Save to Cloud</span>
+        </button>
+        <button id="btn-broadcast-spotlight-clear" class="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold px-3 py-2 rounded-xl transition flex items-center gap-1.5" title="Dismiss active spotlight on all student screens">
+          <i class="fa-solid fa-eye-slash text-xs"></i>
+          <span>Dismiss Focus</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Scene Picker Modal -->
+    <div id="scene-picker-modal" class="pointer-events-auto fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 space-y-4 shadow-2xl">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-map-location-dot text-indigo-400"></i>
+            <span>Jump to Tour Scene</span>
+          </h3>
+          <button id="btn-close-scene-picker" class="text-slate-400 hover:text-white w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center">
+            <i class="fa-solid fa-xmark text-xs"></i>
+          </button>
+        </div>
+        <div id="scene-picker-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1"></div>
+      </div>
+    </div>
+
+    <!-- Tour Switcher Modal (Live Seamless Transition) -->
+    <div id="tour-switcher-modal" class="pointer-events-auto fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-6 space-y-4 shadow-2xl">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-layer-group text-indigo-400"></i>
+              <span>Switch Live Classroom Tour</span>
+            </h3>
+            <p class="text-xs text-slate-400">Connected students will automatically transition to the new tour immediately.</p>
+          </div>
+          <button id="btn-close-tour-switcher" class="text-slate-400 hover:text-white w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center">
+            <i class="fa-solid fa-xmark text-xs"></i>
+          </button>
+        </div>
+        <div id="tour-switcher-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 3: MODALS -->
+
+  <!-- Modal: Offline Classroom Network Settings -->
+  <div id="network-settings-modal" class="fixed inset-0 z-50 glass-modal flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-network-wired text-indigo-400"></i>
+          <h3 class="text-sm font-bold text-white">Classroom Network Mode</h3>
+        </div>
+        <button type="button" id="btn-close-network-modal" class="text-slate-400 hover:text-white w-7 h-7 rounded-xl bg-slate-800 flex items-center justify-center">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <p class="text-slate-300 leading-relaxed">
+          Choose how student devices discover this presenter console. Switch to <strong>Offline LAN</strong> if using a classroom travel router with no outside internet.
+        </p>
+
+        <div class="space-y-2">
+          <label class="flex items-start gap-3 p-3 rounded-2xl border border-slate-800 bg-slate-950 cursor-pointer hover:border-indigo-500/50 transition">
+            <input type="radio" name="net-mode-radio" value="cloud" id="radio-mode-cloud" class="mt-0.5 text-indigo-600 focus:ring-indigo-500" checked>
+            <div>
+              <span class="font-bold text-white block">Cloud Broker (Standard Internet)</span>
+              <span class="text-slate-400 text-[11px] block mt-0.5">Uses public PeerJS relay. Requires active Wi-Fi internet connection during handshake.</span>
+            </div>
+          </label>
+
+          <label class="flex items-start gap-3 p-3 rounded-2xl border border-slate-800 bg-slate-950 cursor-pointer hover:border-indigo-500/50 transition">
+            <input type="radio" name="net-mode-radio" value="local" id="radio-mode-local" class="mt-0.5 text-indigo-600 focus:ring-indigo-500">
+            <div>
+              <span class="font-bold text-white block">Offline LAN Relay (Air-Gapped Router)</span>
+              <span class="text-slate-400 text-[11px] block mt-0.5">Direct connection through local travel router with no outside internet.</span>
+            </div>
+          </label>
+        </div>
+
+        <div id="lan-ip-config" class="hidden space-y-2 p-3 bg-slate-950 border border-slate-800 rounded-2xl">
+          <label class="block text-slate-300 font-semibold text-[11px]">Local Server Host / IP Address:</label>
+          <div class="flex items-center gap-2">
+            <input type="text" id="input-lan-host" placeholder="192.168.1.100" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 font-mono text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500">
+            <input type="number" id="input-lan-port" placeholder="9000" value="9000" class="w-20 bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 font-mono text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500">
+          </div>
+          <p class="text-[10px] text-slate-500">Port 9000 with path '/expeditions' running `offline-server.js`.</p>
+        </div>
+
+        <div class="pt-2 flex justify-end">
+          <button type="button" id="btn-save-network-mode" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-2 rounded-xl text-xs transition active:scale-95 shadow-md">
+            Save & Apply Settings
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Create Tour Metadata -->
+  <div id="create-tour-modal" class="fixed inset-0 z-50 glass-modal flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-5 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-purple-400">Tour Studio</span>
+          <h3 class="text-lg font-black text-white">Create New Expedition</h3>
+        </div>
+        <button type="button" id="btn-close-create-tour" class="text-slate-400 hover:text-white w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-slate-300 text-xs font-semibold mb-1">Expedition Title *</label>
+          <input type="text" id="input-new-tour-title" placeholder="e.g. Ancient Rome: The Colosseum" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500 transition">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-slate-300 text-xs font-semibold mb-1">Subject / Curriculum</label>
+            <input type="text" id="input-new-tour-subject" placeholder="e.g. World History" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500 transition">
+          </div>
+          <div>
+            <label class="block text-slate-300 text-xs font-semibold mb-1">Target Grade Level</label>
+            <input type="text" id="input-new-tour-grade" placeholder="e.g. Grade 6 - 8" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500 transition">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-slate-300 text-xs font-semibold mb-1">Overview Description</label>
+          <textarea id="input-new-tour-desc" rows="3" placeholder="Brief lesson introduction and field trip learning goals..." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500 transition"></textarea>
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-800">
+          <button type="button" id="btn-cancel-create-tour" class="text-slate-400 hover:text-white px-4 py-2 rounded-xl text-xs font-semibold transition">Cancel</button>
+          <button type="button" id="btn-proceed-create-tour" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-purple-600/30 transition flex items-center gap-2 active:scale-95">
+            <span>Proceed to Add First Scene</span>
+            <i class="fa-solid fa-arrow-right text-xs"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add / Edit Scene -->
+  <div id="add-scene-modal" class="fixed inset-0 z-50 glass-modal flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 sm:p-8 space-y-5 shadow-2xl max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-purple-400">Scene Editor</span>
+          <h3 class="text-lg font-black text-white">Add 360° Scene to Tour</h3>
+        </div>
+        <button type="button" id="btn-close-scene-modal" class="text-slate-400 hover:text-white w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-slate-300 text-xs font-semibold mb-1">Scene Name / Landmark Title *</label>
+          <input type="text" id="input-scene-title" placeholder="e.g. Arena Floor and Hypogeum" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500 transition">
+        </div>
+
+        <div>
+          <label class="block text-slate-300 text-xs font-semibold mb-1">Teacher Curriculum Narration</label>
+          <textarea id="input-scene-script" rows="3" placeholder="Enter teacher talking points and guide notes for this location..." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500 transition"></textarea>
+        </div>
+
+        <div class="space-y-2">
+          <label class="block text-slate-300 text-xs font-semibold">Equirectangular 360° Image</label>
+          <div class="border-2 border-dashed border-slate-700 hover:border-purple-500 rounded-2xl p-5 text-center transition cursor-pointer bg-slate-950/50" id="drop-zone-pano">
+            <input type="file" id="file-input-pano" accept="image/*" class="hidden">
+            <i class="fa-solid fa-panorama text-2xl text-purple-400 mb-2"></i>
+            <p class="text-xs font-semibold text-white">Click or drag & drop 360° photo</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">JPEG, PNG, or WebP. Optimized client-side for WebGL.</p>
+          </div>
+
+          <div id="pano-opt-status" class="hidden p-3 bg-emerald-950/60 border border-emerald-500/30 rounded-xl flex items-center justify-between text-xs text-emerald-300">
+            <span class="flex items-center gap-2">
+              <i class="fa-solid fa-circle-check text-emerald-400"></i>
+              <span id="pano-opt-label">Optimized for WebGL (4096x2048)</span>
+            </span>
+            <span id="pano-opt-savings" class="font-mono text-[10px] bg-emerald-900/60 px-2 py-0.5 rounded-full">-82% Size</span>
+          </div>
+
+          <div class="relative flex py-1 items-center">
+            <div class="flex-grow border-t border-slate-800"></div>
+            <span class="flex-shrink mx-3 text-[10px] text-slate-500 uppercase font-mono">Or provide URL</span>
+            <div class="flex-grow border-t border-slate-800"></div>
+          </div>
+
+          <input type="url" id="input-scene-url" placeholder="https://... direct image link" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500 transition">
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-800">
+          <button type="button" id="btn-cancel-scene-modal" class="text-slate-400 hover:text-white px-4 py-2 rounded-xl text-xs font-semibold transition">Cancel</button>
+          <button type="button" id="btn-submit-scene" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-purple-600/30 transition flex items-center gap-2 active:scale-95">
+            <i class="fa-solid fa-floppy-disk text-xs"></i>
+            <span>Save & Load Scene</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add / Edit Hotspot Target -->
+  <div id="add-hotspot-modal" class="fixed inset-0 z-50 glass-modal flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-bullseye text-amber-400 text-sm"></i>
+          <h3 id="modal-hotspot-heading" class="text-sm font-bold text-white">Add Curriculum Target Marker</h3>
+        </div>
+        <button type="button" id="btn-close-hotspot-modal" class="text-slate-400 hover:text-white w-7 h-7 rounded-xl bg-slate-800 flex items-center justify-center">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3.5">
+        <div>
+          <label class="block text-slate-300 text-xs font-semibold mb-1">Target Name *</label>
+          <input type="text" id="input-hotspot-title" placeholder="e.g. Travertine Archway" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition">
+        </div>
+
+        <div>
+          <label class="block text-slate-300 text-xs font-semibold mb-1">Information / Discussion Notes *</label>
+          <textarea id="input-hotspot-text" rows="5" placeholder="Point students toward this detail, background facts, and discussion questions (scrollable with no length limit)..." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"></textarea>
+        </div>
+
+        <!-- Hotspot Detail Image Upload (Optional) -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="block text-slate-300 text-xs font-semibold">Detail Image / Artifact Photo <span class="text-slate-500 font-normal">(Optional)</span></label>
+            <button type="button" id="btn-clear-hotspot-img" class="hidden text-[10px] text-rose-400 hover:text-rose-300 transition">Remove Photo</button>
+          </div>
+
+          <div id="drop-zone-hotspot-img" class="border-2 border-dashed border-slate-700 hover:border-amber-500/60 rounded-xl p-3.5 text-center transition cursor-pointer bg-slate-950/60">
+            <input type="file" id="file-input-hotspot-img" accept="image/*" class="hidden">
+            <div id="hotspot-img-preview-box" class="hidden mb-2 relative max-h-36 overflow-hidden rounded-lg bg-slate-900 border border-slate-800">
+              <img id="hotspot-img-preview" src="" alt="Target Detail Preview" class="w-full h-32 object-contain mx-auto">
+            </div>
+            <div id="hotspot-img-upload-prompt" class="space-y-1">
+              <i class="fa-solid fa-image text-amber-400 text-lg"></i>
+              <p class="text-xs font-medium text-white">Upload diagram, artifact close-up, or photo</p>
+              <p class="text-[10px] text-slate-400">Pops up on student devices when spotlighted</p>
+            </div>
+          </div>
+
+          <input type="url" id="input-hotspot-image-url" placeholder="Or paste image link (https://...)" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition">
+        </div>
+
+        <!-- Re-positioning option for edits -->
+        <div id="hotspot-reposition-box" class="hidden p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+          <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-300 font-medium select-none">
+            <input type="checkbox" id="chk-hotspot-reposition" class="w-4 h-4 rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 bg-slate-900">
+            <span>Move marker position to current camera center</span>
+          </label>
+        </div>
+
+        <div id="hotspot-pos-hint" class="text-[11px] text-slate-400 bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center gap-2">
+          <i class="fa-solid fa-crosshairs text-indigo-400"></i>
+          <span id="hotspot-pos-hint-text">Marker positioned at current crosshair camera center.</span>
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+          <button type="button" id="btn-cancel-hotspot" class="text-slate-400 hover:text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold transition">Cancel</button>
+          <button type="button" id="btn-save-hotspot" class="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-4 py-2 rounded-xl transition flex items-center gap-1.5 active:scale-95 shadow-md shadow-amber-500/20">
+            <i class="fa-solid fa-check text-xs"></i>
+            <span id="btn-save-hotspot-text">Save Target Marker</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Generic Delete Confirmation -->
+  <div id="delete-confirm-modal" class="fixed inset-0 z-50 glass-modal flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl text-center">
+      <div class="w-12 h-12 mx-auto rounded-2xl bg-rose-600/20 border border-rose-500/30 text-rose-400 flex items-center justify-center text-xl">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <div class="space-y-1">
+        <h3 id="delete-modal-title" class="text-base font-bold text-white">Confirm Deletion</h3>
+        <p id="delete-modal-desc" class="text-xs text-slate-300 leading-relaxed">Are you sure you want to delete this item? This action cannot be undone.</p>
+      </div>
+      <div class="pt-2 flex items-center justify-center gap-3">
+        <button type="button" id="btn-cancel-delete" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl text-xs font-semibold transition active:scale-95">Cancel</button>
+        <button type="button" id="btn-confirm-delete" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-5 py-2 rounded-xl shadow-lg shadow-rose-600/30 transition flex items-center gap-1.5 active:scale-95">
+          <i class="fa-solid fa-trash-can text-xs"></i>
+          <span id="btn-confirm-delete-text">Delete</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="floating-toast" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-slate-700 text-white px-4 py-2 rounded-2xl text-xs font-semibold shadow-2xl backdrop-blur-md transition-opacity duration-300 pointer-events-none opacity-0 flex items-center gap-2">
+    <i class="fa-solid fa-circle-info text-indigo-400" id="toast-icon"></i>
+    <span id="toast-message">Notification message</span>
+  </div>
+
+  <!-- JAVASCRIPT APPLICATION CODE -->
+  <script>
+    /* Google Apps Script Backend URL */
+    const DRIVE_API_ENDPOINT = "https://script.google.com/macros/s/AKfycbzXvQ_KdEfyJjVW1KOh0MOsKmy32sC0lf4IhBzhcfQ_xBZh9cgY4fdOQ6T0VF8LMI-h/exec";
+
+    /* ---------------------------------------------------------
+       IndexedDB Offline Storage Subsystem (iPad / Tablet Cache)
+       --------------------------------------------------------- */
+    const DB_NAME = 'ExpeditionsOfflineStore';
+    const DB_VERSION = 1;
+    const STORE_TOURS = 'tours';
+    const STORE_ASSETS = 'assets';
+
+    function openOfflineDB() {
+      return new Promise((resolve, reject) => {
+        if (!('indexedDB' in window)) {
+          return resolve(null);
+        }
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_TOURS)) {
+            db.createObjectStore(STORE_TOURS, { keyPath: 'id' });
+          }
+          if (!db.objectStoreNames.contains(STORE_ASSETS)) {
+            db.createObjectStore(STORE_ASSETS);
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function getDownloadedTourIds() {
+      try {
+        const db = await openOfflineDB();
+        if (!db) return [];
+        return new Promise((resolve) => {
+          const tx = db.transaction(STORE_TOURS, 'readonly');
+          const store = tx.objectStore(STORE_TOURS);
+          const req = store.getAllKeys();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => resolve([]);
+        });
+      } catch (e) {
+        return [];
+      }
+    }
+
+    async function saveAssetToDB(url, blob) {
+      const db = await openOfflineDB();
+      if (!db || !url) return;
+      return new Promise((resolve) => {
+        const tx = db.transaction(STORE_ASSETS, 'readwrite');
+        tx.objectStore(STORE_ASSETS).put(blob, url);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+    }
+
+    async function getAssetBlobUrl(url) {
+      if (!url || url.startsWith('data:') || url.startsWith('blob:')) return url;
+      try {
+        const db = await openOfflineDB();
+        if (!db) return url;
+        return new Promise((resolve) => {
+          const tx = db.transaction(STORE_ASSETS, 'readonly');
+          const req = tx.objectStore(STORE_ASSETS).get(url);
+          req.onsuccess = () => {
+            if (req.result instanceof Blob) {
+              resolve(URL.createObjectURL(req.result));
+            } else {
+              resolve(url);
+            }
+          };
+          req.onerror = () => resolve(url);
+        });
+      } catch (e) {
+        return url;
+      }
+    }
+
+    async function deleteTourFromOfflineStore(tourId) {
+      const db = await openOfflineDB();
+      if (!db) return;
+      return new Promise((resolve) => {
+        const tx = db.transaction([STORE_TOURS], 'readwrite');
+        tx.objectStore(STORE_TOURS).delete(tourId);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+    }
+
+    async function downloadTourForOffline(tour, progressCallback) {
+      const db = await openOfflineDB();
+      if (!db) throw new Error('IndexedDB not supported');
+
+      const urlsToFetch = [];
+      if (tour.cover && !tour.cover.startsWith('data:')) urlsToFetch.push(tour.cover);
+
+      (tour.scenes || []).forEach(sc => {
+        if (sc.panorama && !sc.panorama.startsWith('data:')) urlsToFetch.push(sc.panorama);
+        (sc.hotspots || []).forEach(h => {
+          if (h.image && !h.image.startsWith('data:')) urlsToFetch.push(h.image);
+        });
+      });
+
+      const uniqueUrls = Array.from(new Set(urlsToFetch));
+      let completed = 0;
+
+      for (const url of uniqueUrls) {
+        try {
+          const resp = await fetch(url, { mode: 'cors' });
+          if (resp.ok) {
+            const blob = await resp.blob();
+            await saveAssetToDB(url, blob);
+          }
+        } catch (fetchErr) {
+          console.warn('Could not cache remote asset offline:', url, fetchErr);
+        }
+        completed++;
+        if (progressCallback) {
+          progressCallback(Math.round((completed / uniqueUrls.length) * 100));
+        }
+      }
+
+      // Save tour metadata to DB
+      await new Promise((resolve) => {
+        const tx = db.transaction(STORE_TOURS, 'readwrite');
+        tx.objectStore(STORE_TOURS).put(tour);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+    }
+
+    /* Default Preset Tours */
+    const DEFAULT_PRESET_TOURS = [
+      {
+        id: "apollo-11",
+        title: "Apollo 11: Lunar Exploration",
+        subject: "Space Science",
+        grade: "Grades 5-10",
+        description: "Follow Neil Armstrong and Buzz Aldrin as they land the Apollo 11 Lunar Module Eagle on the Moon.",
+        cover: "https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?auto=format&fit=crop&w=800&q=80",
+        scenes: [
+          {
+            id: "moon-base",
+            title: "Tranquility Base Landing Site",
+            script: "On July 20, 1969, humanity first stepped onto another celestial body. Direct student gaze toward the Lunar Module foil and the astronaut footprints preserved in lunar regolith.",
+            panorama: "https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?auto=format&fit=crop&w=2000&q=80",
+            hotspots: [
+              { id: "hotspot-flag", title: "American Lunar Flag", text: "Notice the horizontal telescopic rod along the top of the flag. Why did NASA add this bar? (Because there is no atmosphere or wind on the Moon).", phi: 1.6, theta: 0.8 },
+              { id: "hotspot-lem", title: "Lunar Module Descent Stage", text: "Observe the gold Kapton insulation foil. It protected delicate instruments from wild 500-degree Fahrenheit thermal swings.", phi: 1.5, theta: 2.7 }
+            ]
+          },
+          {
+            id: "moon-earthrise",
+            title: "View of Earth from Lunar Orbit",
+            script: "Before landing, the crew captured images of Earth rising over the cratered horizon. Discuss why Earth appears like a fragile blue marble in the cosmic void.",
+            panorama: "https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?auto=format&fit=crop&w=2000&q=80",
+            hotspots: [
+              { id: "hotspot-earth", title: "Planet Earth", text: "Contrast the vibrant atmosphere of Earth with the completely airless, desolate surface of the Moon below.", phi: 1.3, theta: 1.1 }
+            ]
+          }
+        ]
+      },
+      {
+        id: "great-barrier-reef",
+        title: "Great Barrier Reef: Coral Ecology",
+        subject: "Marine Biology",
+        grade: "Grades 4-9",
+        description: "Dive beneath the Coral Sea off Queensland, Australia to investigate biodiversity, symbiosis, and reef health.",
+        cover: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80",
+        scenes: [
+          {
+            id: "reef-outer-crest",
+            title: "The Outer Reef Crest",
+            script: "Corals are colonial marine invertebrates that build calcium carbonate exoskeletons. Point students toward the branching staghorn coral.",
+            panorama: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=2000&q=80",
+            hotspots: [
+              { id: "hotspot-coral", title: "Staghorn Coral Colonies", text: "Ask students: How do micro-algae living inside coral tissue generate nutrients through photosynthesis?", phi: 1.7, theta: 1.4 }
+            ]
+          }
+        ]
+      },
+      {
+        id: "colosseum-rome",
+        title: "The Roman Colosseum & Flavian Vaults",
+        subject: "World History",
+        grade: "Grades 6-12",
+        description: "Explore the architectural engineering of the Flavian Amphitheatre in ancient Rome, completed in 80 AD.",
+        cover: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&w=800&q=80",
+        scenes: [
+          {
+            id: "colosseum-interior",
+            title: "The Arena Hypogeum",
+            script: "The Colosseum seated up to 50,000 Roman citizens. Beneath the sand arena lay the hypogeum: a network of elevators, cages, and mechanical tunnels.",
+            panorama: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&w=2000&q=80",
+            hotspots: [
+              { id: "hotspot-arches", title: "Travertine Archways", text: "Roman engineers perfected the true keystone arch to distribute immense compressive loads across multiple vaulted tiers.", phi: 1.5, theta: 0.5 }
+            ]
+          }
+        ]
+      }
+    ];
+
+    /* Application State */
+    let allTours = [];
+    let currentTour = null;
+    let currentScene = null;
+    let currentSceneIndex = 0;
+    let isStudioMode = false;
+    let currentRoomCode = "48291";
+    let connectedStudents = new Map();
+    let downloadedTourIds = new Set();
+
+    /* Network Configuration (Cloud vs Offline LAN) */
+    let networkConfig = {
+      mode: localStorage.getItem('expeditions_net_mode') || 'cloud',
+      lanHost: localStorage.getItem('expeditions_lan_host') || '192.168.1.100',
+      lanPort: parseInt(localStorage.getItem('expeditions_lan_port') || '9000', 10)
+    };
+
+    /* Three.js State */
+    let scene, camera, renderer, sphereMesh, textureLoader;
+    let hotspotGroup, impromptuMarker = null;
+    let studentGazeGroup = null;
+    const studentGazeMeshes = new Map();
+    let lon = 0, lat = 0;
+    let isUserInteracting = false;
+    let onPointerDownPointerX = 0, onPointerDownPointerY = 0;
+    let onPointerDownLon = 0, onPointerDownLat = 0;
+    let targetHotspotPhi = 0, targetHotspotTheta = 0;
+
+    /* Temporary Upload State */
+    let stagedPanoBase64 = null;
+    let stagedTourDraft = null;
+    let stagedHotspotImageBase64 = null;
+    let pendingDeleteAction = null;
+    let editingHotspotId = null;
+
+    /* Networking - Multi-Client WebRTC Pool */
+    let teacherPeer = null;
+    const studentConnections = new Map();
+    let syncChannel = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        syncChannel = new BroadcastChannel('expeditions-classroom-sync');
+      }
+    } catch (e) {}
+
+    function slugify(text) {
+      if (!text) return 'tour-' + Date.now();
+      return text.toString()
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    }
+
+    /* ---------------------------------------------------------
+       WebRTC PeerJS & Broadcast Networking (Teacher Multi-Client Host)
+       --------------------------------------------------------- */
+    function setSignalingUI(state, text) {
+      const dot = document.getElementById('hud-signal-dot');
+      const label = document.getElementById('hud-signal-text');
+      if (!dot || !label) return;
+
+      label.textContent = text;
+      if (state === 'live') {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50';
+      } else if (state === 'connecting') {
+        dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+      } else {
+        dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+      }
+    }
+
+    function initTeacherPeerServer(roomCode) {
+      if (teacherPeer) {
+        try { teacherPeer.destroy(); } catch (e) {}
+        teacherPeer = null;
+      }
+      studentConnections.clear();
+      connectedStudents.clear();
+      updateStudentsCountUI();
+
+      const hostPeerId = `teacher-room-${roomCode}`;
+      setSignalingUI('connecting', `Signal: Registering ${hostPeerId}...`);
+
+      let peerOptions = {
+        debug: 1,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun.services.mozilla.com' }
+          ]
+        }
+      };
+
+      if (networkConfig.mode === 'local') {
+        peerOptions = {
+          host: networkConfig.lanHost,
+          port: networkConfig.lanPort,
+          path: '/expeditions',
+          secure: false,
+          debug: 1
+        };
+        setSignalingUI('connecting', `Signal: LAN (${networkConfig.lanHost}:${networkConfig.lanPort})...`);
+      }
+
+      try {
+        teacherPeer = new Peer(hostPeerId, peerOptions);
+
+        teacherPeer.on('open', (id) => {
+          setSignalingUI('live', `Signal: Live (${id})`);
+          showFloatingToast(`Classroom broadcast ready on Room ${roomCode}`);
+        });
+
+        teacherPeer.on('connection', (conn) => {
+          setupIncomingStudentConnection(conn);
+        });
+
+        teacherPeer.on('error', (err) => {
+          console.warn('Teacher peer error:', err);
+          if (err && err.type === 'unavailable-id') {
+            setSignalingUI('live', `Signal: Active on ${hostPeerId}`);
+          } else {
+            setSignalingUI('error', `Signal: ${err.type || 'Offline'}`);
+          }
+        });
+
+        teacherPeer.on('disconnected', () => {
+          setSignalingUI('connecting', 'Signal: Reconnecting relay...');
+          try { teacherPeer.reconnect(); } catch (e) {}
+        });
+      } catch (e) {
+        console.warn('WebRTC initialization failed:', e);
+        setSignalingUI('error', 'Signal: Sandboxed / Blocked');
+      }
+
+      setupLocalChannelSync();
+    }
+
+    function setupIncomingStudentConnection(conn) {
+      if (!conn) return;
+
+      const peerId = conn.peer;
+
+      const sendCatchup = () => {
+        try {
+          if (conn.open) {
+            conn.send({
+              type: 'TEACHER_HANDSHAKE_ACK',
+              roomCode: currentRoomCode,
+              tour: currentTour,
+              scene: currentScene,
+              sceneIndex: currentSceneIndex
+            });
+          }
+        } catch (err) {
+          console.warn('Failed to send catchup to student:', peerId, err);
+        }
+      };
+
+      conn.on('open', () => {
+        studentConnections.set(peerId, conn);
+        sendCatchup();
+      });
+
+      conn.on('data', (data) => {
+        handleIncomingStudentMessage(data, conn.peer);
+      });
+
+      conn.on('close', () => {
+        removeStudentSession(peerId);
+      });
+
+      conn.on('error', (err) => {
+        console.warn('Student connection error:', peerId, err);
+        removeStudentSession(peerId);
+      });
+
+      if (conn.open) {
+        studentConnections.set(peerId, conn);
+        sendCatchup();
+      }
+    }
+
+    function removeStudentSession(peerId) {
+      studentConnections.delete(peerId);
+      connectedStudents.delete(peerId);
+      removeStudentGaze(peerId);
+      updateStudentsCountUI();
+    }
+
+    function handleIncomingStudentMessage(msg, peerId) {
+      if (!msg) return;
+
+      const studentKey = msg.studentId || peerId || ('student-' + Math.random().toString(36).substring(2, 7));
+
+      if (msg.type === 'STUDENT_JOIN' || msg.type === 'STUDENT_HEARTBEAT') {
+        const studentName = msg.studentName || `Student ${connectedStudents.size + 1}`;
+        connectedStudents.set(studentKey, {
+          name: studentName,
+          lastSeen: Date.now()
+        });
+        updateStudentsCountUI();
+
+        const targetConn = studentConnections.get(peerId);
+        if (targetConn && targetConn.open) {
+          try {
+            targetConn.send({
+              type: 'TEACHER_HANDSHAKE_ACK',
+              roomCode: currentRoomCode,
+              studentId: studentKey,
+              tour: currentTour,
+              scene: currentScene,
+              sceneIndex: currentSceneIndex
+            });
+          } catch (e) {}
+        }
+      } else if (msg.type === 'STUDENT_GAZE') {
+        if (!connectedStudents.has(studentKey)) {
+          connectedStudents.set(studentKey, {
+            name: msg.studentName || 'Student',
+            lastSeen: Date.now()
+          });
+          updateStudentsCountUI();
+        }
+
+        updateStudentGazePosition(studentKey, msg.studentName, msg.lon, msg.lat);
+      }
+    }
+
+    function broadcastTeacherAction(payload) {
+      if (syncChannel) {
+        try { syncChannel.postMessage(payload); } catch (e) {}
+      }
+
+      studentConnections.forEach((conn) => {
+        if (conn && conn.open) {
+          try { conn.send(payload); } catch (err) {}
+        }
+      });
+    }
+
+    function setupLocalChannelSync() {
+      if (!syncChannel) return;
+      syncChannel.onmessage = (event) => {
+        const data = event.data;
+        if (!data || (data.roomCode && data.roomCode !== currentRoomCode)) return;
+        if (data.type === 'STUDENT_JOIN' || data.type === 'STUDENT_GAZE') {
+          handleIncomingStudentMessage(data, data.studentId);
+        }
+      };
+    }
+
+    async function initToursState() {
+      try {
+        const cached = localStorage.getItem('teacher_saved_tours');
+        if (cached) {
+          allTours = JSON.parse(cached);
+        } else {
+          allTours = JSON.parse(JSON.stringify(DEFAULT_PRESET_TOURS));
+        }
+      } catch (e) {
+        allTours = JSON.parse(JSON.stringify(DEFAULT_PRESET_TOURS));
+      }
+
+      const localKeys = await getDownloadedTourIds();
+      downloadedTourIds = new Set(localKeys);
+
+      fetchToursFromGoogleDrive();
+      renderToursGrid();
+    }
+
+    function saveToursToStorage(syncCloud = true) {
+      try {
+        localStorage.setItem('teacher_saved_tours', JSON.stringify(allTours));
+      } catch (err) {
+        console.warn('LocalStorage limit reached:', err);
+      }
+
+      if (syncCloud && currentTour) {
+        saveTourToGoogleDrive(currentTour);
+      }
+    }
+
+    async function fetchToursFromGoogleDrive() {
+      updateCloudStatusUI('syncing', 'Syncing Drive...');
+      const spinner = document.getElementById('portal-sync-spinner');
+      if (spinner) spinner.classList.add('fa-spin');
+
+      try {
+        const response = await fetch(`${DRIVE_API_ENDPOINT}?action=GET_TOURS&nocache=${Date.now()}`, {
+          method: 'GET',
+          redirect: 'follow',
+          mode: 'cors'
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        if (data && data.status === 'success' && Array.isArray(data.tours)) {
+          mergeDriveTours(data.tours);
+          updateCloudStatusUI('connected', `Drive Connected (${data.count} Tours)`);
+        } else {
+          throw new Error(data.message || 'Invalid Drive payload');
+        }
+      } catch (fetchErr) {
+        console.warn('Direct fetch failed, trying JSONP:', fetchErr);
+        fetchToursViaJsonp();
+      } finally {
+        if (spinner) spinner.classList.remove('fa-spin');
+      }
+    }
+
+    function fetchToursViaJsonp() {
+      const callbackName = 'driveCallback_' + Math.floor(Math.random() * 100000);
+      const script = document.createElement('script');
+      script.src = `${DRIVE_API_ENDPOINT}?action=GET_TOURS&prefix=${callbackName}&_=${Date.now()}`;
+
+      window[callbackName] = (data) => {
+        delete window[callbackName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+
+        if (data && data.status === 'success' && Array.isArray(data.tours)) {
+          mergeDriveTours(data.tours);
+          updateCloudStatusUI('connected', `Drive Connected (${data.count} Tours)`);
+        } else {
+          updateCloudStatusUI('offline', 'Using Local Cache');
+        }
+      };
+
+      script.onerror = () => {
+        delete window[callbackName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+        updateCloudStatusUI('offline', 'Offline Cache Active');
+      };
+
+      document.body.appendChild(script);
+    }
+
+    function mergeDriveTours(cloudTours) {
+      if (!cloudTours || cloudTours.length === 0) return;
+
+      const mergedMap = new Map();
+      DEFAULT_PRESET_TOURS.forEach(t => mergedMap.set(t.id, t));
+      allTours.forEach(t => mergedMap.set(t.id, t));
+      cloudTours.forEach(ct => mergedMap.set(ct.id, ct));
+
+      allTours = Array.from(mergedMap.values());
+      try {
+        localStorage.setItem('teacher_saved_tours', JSON.stringify(allTours));
+      } catch (e) {}
+
+      renderToursGrid();
+    }
+
+    async function saveTourToGoogleDrive(tour) {
+      if (!tour) return;
+      updateCloudStatusUI('syncing', 'Saving to Drive...');
+      showFloatingToast('Syncing tour to Google Drive...');
+
+      try {
+        const payload = {
+          action: 'SAVE_TOUR',
+          tour: tour
+        };
+
+        const res = await fetch(DRIVE_API_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload),
+          redirect: 'follow',
+          mode: 'cors'
+        });
+
+        const data = await res.json();
+        if (data && data.status === 'success') {
+          if (data.tour) {
+            const idx = allTours.findIndex(t => t.id === data.tour.id);
+            if (idx >= 0) allTours[idx] = data.tour;
+            currentTour = data.tour;
+          }
+          updateCloudStatusUI('connected', 'Saved to Drive');
+          showFloatingToast('Expedition saved to Google Drive!');
+        } else {
+          updateCloudStatusUI('offline', 'Local Cache (Sync Pending)');
+        }
+      } catch (err) {
+        console.warn('Cloud save deferred:', err);
+        updateCloudStatusUI('offline', 'Saved Locally (Drive Offline)');
+      }
+    }
+
+    function updateCloudStatusUI(status, label) {
+      const pill = document.getElementById('portal-cloud-status');
+      const text = document.getElementById('portal-cloud-text');
+      const icon = document.getElementById('portal-cloud-icon');
+      if (!pill || !text || !icon) return;
+
+      text.textContent = label;
+      if (status === 'connected') {
+        pill.className = 'bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-xl text-xs flex items-center gap-2 font-mono';
+        icon.className = 'fa-solid fa-cloud-check text-emerald-400';
+      } else if (status === 'syncing') {
+        pill.className = 'bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 px-3 py-1.5 rounded-xl text-xs flex items-center gap-2 font-mono';
+        icon.className = 'fa-solid fa-arrows-rotate fa-spin text-indigo-400';
+      } else {
+        pill.className = 'bg-amber-950/80 border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-xl text-xs flex items-center gap-2 font-mono';
+        icon.className = 'fa-solid fa-triangle-exclamation text-amber-400';
+      }
+    }
+
+    /* ---------------------------------------------------------
+       Three.js 3D Panorama Engine
+       --------------------------------------------------------- */
+    function createProceduralPanoTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 2048;
+      canvas.height = 1024;
+      const ctx = canvas.getContext('2d');
+      const grad = ctx.createLinearGradient(0, 0, 0, 1024);
+      grad.addColorStop(0, '#090d16');
+      grad.addColorStop(0.5, '#1e1b4b');
+      grad.addColorStop(1, '#020617');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 2048, 1024);
+
+      ctx.fillStyle = '#ffffff';
+      for (let i = 0; i < 200; i++) {
+        const x = Math.random() * 2048;
+        const y = Math.random() * 1024;
+        const r = Math.random() * 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    function initThreeEngine() {
+      const container = document.getElementById('webgl-canvas-container');
+      const width = window.innerWidth || 800;
+      const height = window.innerHeight || 600;
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+      scene.add(camera);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(width, height);
+      container.appendChild(renderer.domElement);
+
+      const geometry = new THREE.SphereGeometry(500, 60, 40);
+      geometry.scale(-1, 1, 1);
+      textureLoader = new THREE.TextureLoader();
+      textureLoader.setCrossOrigin('anonymous');
+
+      const material = new THREE.MeshBasicMaterial({ map: createProceduralPanoTexture() });
+      sphereMesh = new THREE.Mesh(geometry, material);
+      scene.add(sphereMesh);
+
+      hotspotGroup = new THREE.Group();
+      scene.add(hotspotGroup);
+
+      studentGazeGroup = new THREE.Group();
+      scene.add(studentGazeGroup);
+
+      setupCanvasInteractions(container);
+      window.addEventListener('resize', onWindowResize);
+      requestAnimationFrame(renderLoop);
+    }
+
+    function setupCanvasInteractions(container) {
+      let lastTap = 0;
+
+      container.addEventListener('pointerdown', (e) => {
+        isUserInteracting = true;
+        onPointerDownPointerX = e.clientX;
+        onPointerDownPointerY = e.clientY;
+        onPointerDownLon = lon;
+        onPointerDownLat = lat;
+
+        const now = Date.now();
+        if (now - lastTap < 350) {
+          triggerImpromptuSpotlightAtCameraCenter();
+        }
+        lastTap = now;
+      });
+
+      container.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        triggerImpromptuSpotlightAtCameraCenter();
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!isUserInteracting) return;
+        lon = (e.clientX - onPointerDownPointerX) * 0.18 + onPointerDownLon;
+        lat = (e.clientY - onPointerDownPointerY) * 0.18 + onPointerDownLat;
+      });
+
+      window.addEventListener('pointerup', () => { isUserInteracting = false; });
+      window.addEventListener('pointercancel', () => { isUserInteracting = false; });
+    }
+
+    function onWindowResize() {
+      if (!renderer || !camera) return;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+    function renderLoop() {
+      requestAnimationFrame(renderLoop);
+
+      lat = Math.max(-85, Math.min(85, lat));
+      const phi = THREE.MathUtils.degToRad(90 - lat);
+      const theta = THREE.MathUtils.degToRad(lon);
+
+      const target = new THREE.Vector3();
+      target.x = 500 * Math.sin(phi) * Math.sin(theta);
+      target.y = 500 * Math.cos(phi);
+      target.z = 500 * Math.sin(phi) * Math.cos(theta);
+
+      camera.lookAt(target);
+
+      if (impromptuMarker) {
+        const scale = 32 + Math.sin(performance.now() * 0.005) * 5;
+        impromptuMarker.scale.set(scale, scale, 1);
+      }
+
+      studentGazeMeshes.forEach((item) => {
+        if (!item || !item.sprite) return;
+
+        item.currentLon += (item.targetLon - item.currentLon) * 0.2;
+        item.currentLat += (item.targetLat - item.currentLat) * 0.2;
+
+        const sPhi = THREE.MathUtils.degToRad(90 - item.currentLat);
+        const sTheta = THREE.MathUtils.degToRad(item.currentLon);
+        const r = 440;
+
+        item.sprite.position.set(
+          r * Math.sin(sPhi) * Math.sin(sTheta),
+          r * Math.cos(sPhi),
+          r * Math.sin(sPhi) * Math.cos(sTheta)
+        );
+      });
+
+      renderer.render(scene, camera);
+    }
+
+    function createStudentGazeTexture(name) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 160;
+      canvas.height = 160;
+      const ctx = canvas.getContext('2d');
+
+      ctx.beginPath();
+      ctx.arc(80, 70, 48, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(80, 70, 36, 0, Math.PI * 2);
+      ctx.fillStyle = '#0284c7';
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#38bdf8';
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(68, 62, 5, 0, Math.PI * 2);
+      ctx.arc(92, 62, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(80, 72, 16, 0.15 * Math.PI, 0.85 * Math.PI, false);
+      ctx.stroke();
+
+      const label = (name || 'Student').substring(0, 14);
+      ctx.font = 'bold 18px sans-serif';
+      ctx.textAlign = 'center';
+      const textWidth = ctx.measureText(label).width;
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      const pillW = Math.max(textWidth + 16, 70);
+      const pillX = 80 - pillW / 2;
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(pillX, 122, pillW, 26, 8);
+      } else {
+        ctx.rect(pillX, 122, pillW, 26);
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillText(label, 80, 141);
+
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    function updateStudentGazePosition(studentKey, studentName, targetLon, targetLat) {
+      if (!studentGazeGroup) return;
+
+      let item = studentGazeMeshes.get(studentKey);
+
+      if (!item) {
+        const tex = createStudentGazeTexture(studentName);
+        const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+        const sprite = new THREE.Sprite(mat);
+        sprite.scale.set(32, 32, 1);
+        studentGazeGroup.add(sprite);
+
+        item = {
+          sprite: sprite,
+          currentLon: targetLon,
+          currentLat: targetLat,
+          targetLon: targetLon,
+          targetLat: targetLat,
+          name: studentName
+        };
+
+        studentGazeMeshes.set(studentKey, item);
+      } else {
+        item.targetLon = targetLon;
+        item.targetLat = targetLat;
+      }
+    }
+
+    function removeStudentGaze(studentKey) {
+      const item = studentGazeMeshes.get(studentKey);
+      if (item && studentGazeGroup) {
+        studentGazeGroup.remove(item.sprite);
+        if (item.sprite.material.map) item.sprite.material.map.dispose();
+        item.sprite.material.dispose();
+        studentGazeMeshes.delete(studentKey);
+      }
+    }
+
+    function updateStudentsCountUI() {
+      const count = connectedStudents.size;
+      const countText = `${count} ${count === 1 ? 'Student' : 'Students'}`;
+
+      const hudEl = document.getElementById('hud-students-count');
+      if (hudEl) hudEl.textContent = countText;
+
+      const drawerEl = document.getElementById('drawer-students-count');
+      if (drawerEl) drawerEl.textContent = `${count} Active`;
+
+      studentGazeMeshes.forEach((_, key) => {
+        if (!connectedStudents.has(key)) {
+          removeStudentGaze(key);
+        }
+      });
+
+      const listEl = document.getElementById('drawer-students-list');
+      if (listEl) {
+        if (count === 0) {
+          listEl.innerHTML = `<span class="text-[11px] text-slate-500 italic">No students currently connected</span>`;
+        } else {
+          listEl.innerHTML = '';
+          connectedStudents.forEach((student) => {
+            const pill = document.createElement('span');
+            pill.className = 'bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 text-[10px] font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1';
+            pill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>${escapeHtml(student.name)}`;
+            listEl.appendChild(pill);
+          });
+        }
+      }
+    }
+
+    function renderHotspots(hotspots) {
+      while (hotspotGroup.children.length > 0) {
+        const obj = hotspotGroup.children[0];
+        hotspotGroup.remove(obj);
+      }
+
+      hotspots.forEach(h => {
+        const radius = 450;
+        const x = radius * Math.sin(h.phi) * Math.sin(h.theta);
+        const y = radius * Math.cos(h.phi);
+        const z = radius * Math.sin(h.phi) * Math.cos(h.theta);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(64, 64, 48, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(64, 64, 18, 0, Math.PI * 2);
+        ctx.fill();
+
+        const tex = new THREE.CanvasTexture(canvas);
+        const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.position.set(x, y, z);
+        sprite.scale.set(30, 30, 1);
+        sprite.userData = h;
+
+        hotspotGroup.add(sprite);
+      });
+    }
+
+    function renderDrawerTargetsList(hotspots) {
+      const container = document.getElementById('drawer-targets-list');
+      const countBadge = document.getElementById('drawer-targets-count');
+      if (!container || !countBadge) return;
+
+      countBadge.textContent = `${hotspots.length} Points`;
+      container.innerHTML = '';
+
+      if (hotspots.length === 0) {
+        container.innerHTML = `<div class="p-3 text-center text-xs text-slate-500 bg-slate-900 rounded-xl">No target markers added to this scene.</div>`;
+        return;
+      }
+
+      hotspots.forEach((h, idx) => {
+        const card = document.createElement('div');
+        card.className = 'bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 rounded-xl p-3 space-y-2.5 transition';
+        
+        const imageMarkup = h.image ? `
+          <div class="relative w-full h-28 rounded-lg overflow-hidden bg-slate-950 border border-slate-800">
+            <img src="${h.image}" alt="${escapeHtml(h.title)}" class="w-full h-full object-cover">
+            <span class="absolute top-1.5 right-1.5 bg-slate-950/80 text-[9px] font-bold text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
+              <i class="fa-solid fa-image text-[8px] mr-1"></i>Artifact Photo
+            </span>
+          </div>
+        ` : '';
+
+        const studioActions = isStudioMode ? `
+          <div class="flex items-center gap-1.5">
+            <button class="btn-edit-target text-slate-400 hover:text-amber-400 p-1.5 rounded-lg hover:bg-slate-800 text-xs transition" title="Edit Target">
+              <i class="fa-solid fa-pen-to-square"></i>
+            </button>
+            <button class="btn-delete-target text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 text-xs transition" title="Delete Target">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </div>
+        ` : '';
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-white flex items-center gap-1.5 truncate pr-2">
+              <span class="w-4 h-4 shrink-0 rounded-full bg-amber-500/20 text-amber-400 text-[10px] flex items-center justify-center font-bold">${idx + 1}</span>
+              <span class="truncate">${escapeHtml(h.title)}</span>
+            </span>
+            <div class="flex items-center gap-1.5 shrink-0">
+              ${studioActions}
+              <button class="btn-spotlight-target bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition" data-id="${h.id}">
+                Spotlight
+              </button>
+            </div>
+          </div>
+          ${imageMarkup}
+          <div class="max-h-48 overflow-y-auto pr-1">
+            <p class="drawer-target-notes text-xs text-slate-300 leading-relaxed whitespace-pre-line">${escapeHtml(h.text)}</p>
+          </div>
+        `;
+
+        card.querySelector('.btn-spotlight-target').onclick = () => {
+          spotlightHotspot(h);
+        };
+
+        if (isStudioMode) {
+          const btnEdit = card.querySelector('.btn-edit-target');
+          if (btnEdit) {
+            btnEdit.onclick = () => openEditHotspotModal(h);
+          }
+          const btnDelete = card.querySelector('.btn-delete-target');
+          if (btnDelete) {
+            btnDelete.onclick = () => promptDeleteHotspot(h);
+          }
+        }
+
+        container.appendChild(card);
+      });
+    }
+
+    function openEditHotspotModal(h) {
+      if (!h) return;
+      editingHotspotId = h.id;
+
+      const targetLat = 90 - (h.phi * (180 / Math.PI));
+      const targetLon = h.theta * (180 / Math.PI);
+      lon = targetLon;
+      lat = targetLat;
+
+      document.getElementById('modal-hotspot-heading').textContent = 'Edit Curriculum Target Marker';
+      document.getElementById('btn-save-hotspot-text').textContent = 'Update Target';
+      document.getElementById('input-hotspot-title').value = h.title || '';
+      document.getElementById('input-hotspot-text').value = h.text || '';
+      document.getElementById('input-hotspot-image-url').value = (h.image && h.image.startsWith('http')) ? h.image : '';
+
+      stagedHotspotImageBase64 = (h.image && h.image.startsWith('data:image/')) ? h.image : null;
+
+      const previewBox = document.getElementById('hotspot-img-preview-box');
+      const previewImg = document.getElementById('hotspot-img-preview');
+      const uploadPrompt = document.getElementById('hotspot-img-upload-prompt');
+      const btnClearImg = document.getElementById('btn-clear-hotspot-img');
+      const repoBox = document.getElementById('hotspot-reposition-box');
+      const chkRepo = document.getElementById('chk-hotspot-reposition');
+      const posHint = document.getElementById('hotspot-pos-hint-text');
+
+      if (repoBox) repoBox.classList.remove('hidden');
+      if (chkRepo) chkRepo.checked = false;
+      if (posHint) posHint.textContent = 'Existing 3D coordinate preserved unless checked above.';
+
+      if (h.image) {
+        if (previewImg) previewImg.src = h.image;
+        if (previewBox) previewBox.classList.remove('hidden');
+        if (uploadPrompt) uploadPrompt.classList.add('hidden');
+        if (btnClearImg) btnClearImg.classList.remove('hidden');
+      } else {
+        if (previewBox) previewBox.classList.add('hidden');
+        if (previewImg) previewImg.src = '';
+        if (uploadPrompt) uploadPrompt.classList.remove('hidden');
+        if (btnClearImg) btnClearImg.classList.add('hidden');
+      }
+
+      document.getElementById('add-hotspot-modal').classList.remove('hidden');
+    }
+
+    function promptDeleteHotspot(h) {
+      if (!currentScene || !currentScene.hotspots) return;
+      pendingDeleteAction = () => {
+        currentScene.hotspots = currentScene.hotspots.filter(item => item.id !== h.id);
+        saveToursToStorage(true);
+        renderHotspots(currentScene.hotspots);
+        renderDrawerTargetsList(currentScene.hotspots);
+        showFloatingToast(`Deleted target "${h.title}"`);
+      };
+
+      document.getElementById('delete-modal-title').textContent = 'Delete Target Marker?';
+      document.getElementById('delete-modal-desc').textContent = `Are you sure you want to remove "${h.title}" from this scene?`;
+      document.getElementById('btn-confirm-delete-text').textContent = 'Delete Target';
+      document.getElementById('delete-confirm-modal').classList.remove('hidden');
+    }
+
+    function spotlightHotspot(h) {
+      const targetLat = 90 - (h.phi * (180 / Math.PI));
+      const targetLon = h.theta * (180 / Math.PI);
+      lon = targetLon;
+      lat = targetLat;
+
+      showFloatingToast(`Spotlighted: ${h.title}`);
+      const clearBtn = document.getElementById('btn-clear-impromptu');
+      if (clearBtn) clearBtn.classList.remove('hidden');
+
+      broadcastTeacherAction({
+        type: 'TEACHER_SPOTLIGHT',
+        roomCode: currentRoomCode,
+        hotspotId: h.id,
+        title: h.title,
+        text: h.text,
+        image: h.image || null,
+        phi: h.phi,
+        theta: h.theta
+      });
+    }
+
+    function dismissAllSpotlights(broadcast = true) {
+      clearImpromptuSpotlight(false);
+      const clearBtn = document.getElementById('btn-clear-impromptu');
+      if (clearBtn) clearBtn.classList.add('hidden');
+      showFloatingToast('Cleared spotlight focus for all students');
+
+      if (broadcast) {
+        broadcastTeacherAction({
+          type: 'TEACHER_CLEAR_SPOTLIGHT',
+          roomCode: currentRoomCode
+        });
+        broadcastTeacherAction({
+          type: 'TEACHER_CLEAR_IMPROMPTU_PING',
+          roomCode: currentRoomCode
+        });
+      }
+    }
+
+    function triggerImpromptuSpotlightAtCameraCenter() {
+      const currentLat = Math.max(-85, Math.min(85, lat));
+      const phi = THREE.MathUtils.degToRad(90 - currentLat);
+      const theta = THREE.MathUtils.degToRad(lon);
+
+      if (impromptuMarker) {
+        scene.remove(impromptuMarker);
+        impromptuMarker = null;
+      }
+
+      const radius = 450;
+      const x = radius * Math.sin(phi) * Math.sin(theta);
+      const y = radius * Math.cos(phi);
+      const z = radius * Math.sin(phi) * Math.cos(theta);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+
+      ctx.strokeStyle = '#06b6d4';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.arc(64, 64, 52, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(64, 64, 38, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#22d3ee';
+      ctx.beginPath();
+      ctx.arc(64, 64, 18, 0, Math.PI * 2);
+      ctx.fill();
+
+      const tex = new THREE.CanvasTexture(canvas);
+      const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+      impromptuMarker = new THREE.Sprite(spriteMat);
+      impromptuMarker.position.set(x, y, z);
+      impromptuMarker.scale.set(40, 40, 1);
+      scene.add(impromptuMarker);
+
+      const clearBtn = document.getElementById('btn-clear-impromptu');
+      if (clearBtn) clearBtn.classList.remove('hidden');
+      showFloatingToast('Pushed focal point to all students!');
+
+      broadcastTeacherAction({
+        type: 'TEACHER_IMPROMPTU_PING',
+        roomCode: currentRoomCode,
+        phi: phi,
+        theta: theta,
+        title: 'Teacher Point of Interest',
+        text: 'The teacher has spotlighted a focal point in the environment. Turn to align your view.',
+        image: null
+      });
+    }
+
+    function clearImpromptuSpotlight(broadcast = true) {
+      if (impromptuMarker) {
+        scene.remove(impromptuMarker);
+        impromptuMarker = null;
+      }
+      const clearBtn = document.getElementById('btn-clear-impromptu');
+      if (clearBtn) clearBtn.classList.add('hidden');
+
+      if (broadcast) {
+        broadcastTeacherAction({
+          type: 'TEACHER_CLEAR_IMPROMPTU_PING',
+          roomCode: currentRoomCode
+        });
+      }
+    }
+
+    /* ---------------------------------------------------------
+       Portal View & Tour Catalog (Bimodal Switching)
+       --------------------------------------------------------- */
+    function setPortalMode(studioActive) {
+      isStudioMode = studioActive;
+
+      const tabDelivery = document.getElementById('btn-tab-delivery');
+      const tabStudio = document.getElementById('btn-tab-studio');
+      const bannerTag = document.getElementById('banner-tag');
+      const bannerIcon = document.getElementById('banner-icon');
+      const bannerTitle = document.getElementById('banner-title');
+      const bannerDesc = document.getElementById('banner-desc');
+      const bannerActionArea = document.getElementById('banner-action-area');
+      const btnBannerActionIcon = document.getElementById('btn-banner-action-icon');
+      const btnBannerActionText = document.getElementById('btn-banner-action-text');
+      const btnCreateTop = document.getElementById('btn-create-tour-top');
+      const libraryHeading = document.getElementById('library-heading');
+
+      if (isStudioMode) {
+        tabStudio.className = 'px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-purple-600 text-white shadow-md shadow-purple-600/30';
+        tabDelivery.className = 'px-4 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition flex items-center gap-2';
+
+        if (bannerTag) bannerTag.textContent = 'Curriculum Expedition Authoring';
+        if (bannerIcon) bannerIcon.className = 'fa-solid fa-wand-magic-sparkles';
+        if (bannerTitle) bannerTitle.textContent = 'Create & Customize Expeditions';
+        if (bannerDesc) bannerDesc.textContent = 'Build immersive 360° virtual field trips. Upload your own equirectangular panoramas, add talking points, and place curriculum target markers.';
+        if (bannerActionArea) bannerActionArea.classList.remove('hidden');
+        if (btnBannerActionIcon) btnBannerActionIcon.className = 'fa-solid fa-plus';
+        if (btnBannerActionText) btnBannerActionText.textContent = 'Create New Tour';
+        if (btnCreateTop) btnCreateTop.classList.remove('hidden');
+        if (libraryHeading) libraryHeading.textContent = 'Expeditions in Studio';
+      } else {
+        tabDelivery.className = 'px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-indigo-600 text-white shadow-md shadow-indigo-600/30';
+        tabStudio.className = 'px-4 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition flex items-center gap-2';
+
+        if (bannerTag) bannerTag.textContent = 'Live Classroom Broadcasting';
+        if (bannerIcon) bannerIcon.className = 'fa-solid fa-broadcast-tower';
+        if (bannerTitle) bannerTitle.textContent = 'Lead an Immersive Virtual Field Trip';
+        if (bannerDesc) bannerDesc.textContent = 'Select an expedition below to launch live broadcasting. Students connect on their Chromebooks, tablets, or phones using your 5-digit classroom code without logins.';
+        if (bannerActionArea) bannerActionArea.classList.add('hidden');
+        if (btnCreateTop) btnCreateTop.classList.add('hidden');
+        if (libraryHeading) libraryHeading.textContent = 'Expedition Library';
+      }
+
+      renderToursGrid();
+    }
+
+    async function renderToursGrid() {
+      const grid = document.getElementById('tours-grid');
+      const badge = document.getElementById('tours-count-badge');
+      const query = (document.getElementById('input-search-tours').value || '').trim().toLowerCase();
+      if (!grid) return;
+
+      const localKeys = await getDownloadedTourIds();
+      downloadedTourIds = new Set(localKeys);
+
+      const filtered = allTours.filter(t => {
+        if (!query) return true;
+        return (t.title && t.title.toLowerCase().includes(query)) ||
+               (t.subject && t.subject.toLowerCase().includes(query)) ||
+               (t.description && t.description.toLowerCase().includes(query));
+      });
+
+      badge.textContent = `${filtered.length} ${filtered.length === 1 ? 'Tour' : 'Tours'}`;
+      grid.innerHTML = '';
+
+      if (filtered.length === 0) {
+        grid.innerHTML = `
+          <div class="col-span-full py-12 text-center text-slate-500 bg-slate-900/40 border border-slate-800 rounded-3xl">
+            <i class="fa-solid fa-magnifying-glass text-2xl mb-2 text-slate-600"></i>
+            <p class="text-sm">No expeditions found matching "${escapeHtml(query)}"</p>
+          </div>
+        `;
+        return;
+      }
+
+      filtered.forEach(tour => {
+        const card = document.createElement('div');
+        card.className = 'group bg-slate-900 border border-slate-800 hover:border-indigo-500/50 rounded-3xl overflow-hidden shadow-xl transition flex flex-col justify-between';
+
+        const coverImg = tour.cover || (tour.scenes && tour.scenes[0] && tour.scenes[0].panorama) || DEFAULT_PRESET_TOURS[0].cover;
+        const scenesCount = tour.scenes ? tour.scenes.length : 0;
+        const isOffline = downloadedTourIds.has(tour.id);
+
+        const actionColorClass = isStudioMode
+          ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-600/30'
+          : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30';
+
+        const actionIconClass = isStudioMode ? 'fa-pen-to-square' : 'fa-play';
+        const actionLabel = isStudioMode ? 'Edit in Studio' : 'Deliver Tour';
+
+        const offlineButtonMarkup = isOffline ? `
+          <button class="btn-remove-offline text-emerald-400 bg-emerald-950/80 border border-emerald-500/30 hover:bg-rose-950 hover:text-rose-300 hover:border-rose-500/30 px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1.5 transition active:scale-95" title="Downloaded to iPad. Click to remove download.">
+            <i class="fa-solid fa-circle-check text-emerald-400"></i>
+            <span>Offline Ready</span>
+          </button>
+        ` : `
+          <button class="btn-download-offline bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-xl text-[10px] font-semibold flex items-center gap-1.5 transition active:scale-95" title="Download for offline classroom use">
+            <i class="fa-solid fa-arrow-down text-indigo-400"></i>
+            <span>Download</span>
+          </button>
+        `;
+
+        card.innerHTML = `
+          <div>
+            <div class="h-44 w-full bg-slate-950 relative overflow-hidden">
+              <img src="${coverImg}" alt="${escapeHtml(tour.title)}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" onerror="this.src='https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?auto=format&fit=crop&w=800&q=80'">
+              <div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent"></div>
+              <span class="absolute top-3 left-3 bg-slate-950/80 border border-slate-700/60 text-slate-300 text-[10px] font-bold px-2.5 py-1 rounded-xl backdrop-blur-md">
+                ${escapeHtml(tour.subject || 'General')}
+              </span>
+              <span class="absolute bottom-3 right-3 bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg backdrop-blur-md">
+                ${scenesCount} ${scenesCount === 1 ? 'Scene' : 'Scenes'}
+              </span>
+              ${
+                isStudioMode
+                  ? `<button class="btn-delete-grid-tour absolute top-3 right-3 w-7 h-7 rounded-lg bg-rose-950/80 border border-rose-500/40 text-rose-300 hover:text-white hover:bg-rose-600 flex items-center justify-center text-xs transition shadow" title="Delete expedition">
+                      <i class="fa-solid fa-trash-can text-[11px]"></i>
+                     </button>`
+                  : ''
+              }
+            </div>
+
+            <div class="p-5 space-y-2">
+              <h4 class="text-base font-bold text-white group-hover:text-indigo-400 transition truncate">${escapeHtml(tour.title)}</h4>
+              <p class="text-xs text-slate-400 line-clamp-2 leading-relaxed">${escapeHtml(tour.description || '')}</p>
+            </div>
+          </div>
+
+          <div class="p-5 pt-0 border-t border-slate-800/80 mt-2 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] text-slate-500 font-medium">${escapeHtml(tour.grade || 'All Grades')}</span>
+              ${offlineButtonMarkup}
+            </div>
+            <button class="btn-launch-tour ${actionColorClass} text-white text-xs font-bold px-4 py-2 rounded-xl transition flex items-center gap-1.5 active:scale-95 shadow-md">
+              <i class="fa-solid ${actionIconClass} text-[10px]"></i>
+              <span>${actionLabel}</span>
+            </button>
+          </div>
+        `;
+
+        card.querySelector('.btn-launch-tour').onclick = () => {
+          enterExpeditionWorkspace(tour);
+        };
+
+        const btnDownload = card.querySelector('.btn-download-offline');
+        if (btnDownload) {
+          btnDownload.onclick = async (e) => {
+            e.stopPropagation();
+            btnDownload.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-indigo-400"></i><span>Downloading...</span>`;
+            btnDownload.disabled = true;
+            try {
+              await downloadTourForOffline(tour, (pct) => {
+                btnDownload.querySelector('span').textContent = `${pct}%`;
+              });
+              showFloatingToast(`"${tour.title}" downloaded for offline use!`);
+              renderToursGrid();
+            } catch (err) {
+              console.warn(err);
+              showFloatingToast('Download failed. Check connection.');
+              renderToursGrid();
+            }
+          };
+        }
+
+        const btnRemoveOffline = card.querySelector('.btn-remove-offline');
+        if (btnRemoveOffline) {
+          btnRemoveOffline.onclick = async (e) => {
+            e.stopPropagation();
+            await deleteTourFromOfflineStore(tour.id);
+            showFloatingToast(`Removed offline download for "${tour.title}"`);
+            renderToursGrid();
+          };
+        }
+
+        const btnDeleteGrid = card.querySelector('.btn-delete-grid-tour');
+        if (btnDeleteGrid) {
+          btnDeleteGrid.onclick = (e) => {
+            e.stopPropagation();
+            promptDeleteTour(tour);
+          };
+        }
+
+        grid.appendChild(card);
+      });
+    }
+
+    function enterExpeditionWorkspace(tour) {
+      currentTour = tour;
+      currentSceneIndex = 0;
+      currentScene = tour.scenes && tour.scenes[0] ? tour.scenes[0] : null;
+
+      document.getElementById('view-portal').classList.add('hidden');
+      document.getElementById('view-hud').classList.remove('hidden');
+
+      document.getElementById('hud-tour-title').textContent = tour.title;
+      document.getElementById('hud-mode-label').textContent = isStudioMode ? 'Studio Mode' : 'Presenter Mode';
+      document.getElementById('hud-room-code').textContent = `ROOM ${currentRoomCode}`;
+      document.getElementById('drawer-code-bold').textContent = currentRoomCode;
+
+      const btnForceSave = document.getElementById('btn-force-save-drive');
+      const btnStudioAdd = document.getElementById('btn-studio-add-scene');
+      const btnStudioDrop = document.getElementById('btn-studio-drop-target');
+      const btnStudioDeleteTour = document.getElementById('btn-studio-delete-tour');
+      const btnStudioDeleteScene = document.getElementById('btn-studio-delete-scene');
+      const btnDrawerDeleteScene = document.getElementById('btn-drawer-delete-scene');
+
+      if (isStudioMode) {
+        btnForceSave.classList.remove('hidden');
+        btnStudioAdd.classList.remove('hidden');
+        btnStudioDrop.classList.remove('hidden');
+        if (btnStudioDeleteTour) btnStudioDeleteTour.classList.remove('hidden');
+        if (btnStudioDeleteScene) btnStudioDeleteScene.classList.remove('hidden');
+        if (btnDrawerDeleteScene) btnDrawerDeleteScene.classList.remove('hidden');
+      } else {
+        btnForceSave.classList.add('hidden');
+        btnStudioAdd.classList.add('hidden');
+        btnStudioDrop.classList.add('hidden');
+        if (btnStudioDeleteTour) btnStudioDeleteTour.classList.add('hidden');
+        if (btnStudioDeleteScene) btnStudioDeleteScene.classList.add('hidden');
+        if (btnDrawerDeleteScene) btnDrawerDeleteScene.classList.add('hidden');
+        if (!teacherPeer || teacherPeer.destroyed) {
+          initTeacherPeerServer(currentRoomCode);
+        } else {
+          broadcastTeacherAction({
+            type: 'TEACHER_CHANGE_TOUR',
+            roomCode: currentRoomCode,
+            tour: currentTour,
+            scene: currentScene,
+            sceneIndex: 0
+          });
+        }
+      }
+
+      if (currentScene) {
+        loadScene(currentScene, !isStudioMode);
+      }
+    }
+
+    /* ---------------------------------------------------------
+       Deletion Handlers (Tours & Scenes)
+       --------------------------------------------------------- */
+    function promptDeleteTour(tour) {
+      if (!tour) return;
+      pendingDeleteAction = () => executeDeleteTour(tour);
+      document.getElementById('delete-modal-title').textContent = 'Delete Expedition?';
+      document.getElementById('delete-modal-desc').textContent = `Are you sure you want to permanently delete "${tour.title}"? This will remove all scenes and targets.`;
+      document.getElementById('btn-confirm-delete-text').textContent = 'Delete Tour';
+      document.getElementById('delete-confirm-modal').classList.remove('hidden');
+    }
+
+    async function executeDeleteTour(tour) {
+      allTours = allTours.filter(t => t.id !== tour.id);
+      saveToursToStorage(false);
+
+      showFloatingToast(`Deleted tour "${tour.title}"`);
+
+      if (currentTour && currentTour.id === tour.id) {
+        currentTour = null;
+        currentScene = null;
+        exitToPortal();
+      } else {
+        renderToursGrid();
+      }
+
+      try {
+        await fetch(DRIVE_API_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'DELETE_TOUR',
+            tourId: tour.id,
+            tourTitle: tour.title
+          }),
+          mode: 'cors'
+        });
+      } catch (err) {
+        console.warn('Backend tour deletion failed or deferred:', err);
+      }
+    }
+
+    function promptDeleteCurrentScene() {
+      if (!currentTour || !currentTour.scenes || currentTour.scenes.length === 0) {
+        showFloatingToast('No scene available to delete.');
+        return;
+      }
+      if (currentTour.scenes.length <= 1) {
+        showFloatingToast('Cannot delete the only scene. Delete the entire expedition instead.');
+        return;
+      }
+
+      const sceneTitle = (currentScene && currentScene.title) ? currentScene.title : `Scene ${currentSceneIndex + 1}`;
+      pendingDeleteAction = () => executeDeleteCurrentScene();
+      document.getElementById('delete-modal-title').textContent = 'Delete Scene?';
+      document.getElementById('delete-modal-desc').textContent = `Are you sure you want to remove "${sceneTitle}" from "${currentTour.title}"?`;
+      document.getElementById('btn-confirm-delete-text').textContent = 'Delete Scene';
+      document.getElementById('delete-confirm-modal').classList.remove('hidden');
+    }
+
+    function executeDeleteCurrentScene() {
+      if (!currentTour || !currentTour.scenes || currentTour.scenes.length <= 1) return;
+
+      const deletedTitle = currentScene ? currentScene.title : 'Scene';
+      currentTour.scenes.splice(currentSceneIndex, 1);
+
+      if (currentSceneIndex >= currentTour.scenes.length) {
+        currentSceneIndex = currentTour.scenes.length - 1;
+      }
+
+      currentScene = currentTour.scenes[currentSceneIndex];
+      saveToursToStorage(true);
+
+      showFloatingToast(`Deleted "${deletedTitle}"`);
+      loadScene(currentScene, !isStudioMode);
+    }
+
+    function switchLiveTour(newTour) {
+      if (!newTour) return;
+      currentTour = newTour;
+      currentSceneIndex = 0;
+      currentScene = newTour.scenes && newTour.scenes[0] ? newTour.scenes[0] : null;
+
+      const hudTourTitle = document.getElementById('hud-tour-title');
+      if (hudTourTitle) hudTourTitle.textContent = currentTour.title;
+
+      showFloatingToast(`Switched expedition to: ${currentTour.title}`);
+
+      broadcastTeacherAction({
+        type: 'TEACHER_CHANGE_TOUR',
+        roomCode: currentRoomCode,
+        tour: currentTour,
+        scene: currentScene,
+        sceneIndex: 0
+      });
+
+      if (currentScene) {
+        loadScene(currentScene, false);
+      }
+    }
+
+    function exitToPortal() {
+      document.getElementById('view-hud').classList.add('hidden');
+      document.getElementById('view-portal').classList.remove('hidden');
+      renderToursGrid();
+    }
+
+    /* ---------------------------------------------------------
+       Scene Loading & Management
+       --------------------------------------------------------- */
+    async function loadScene(sceneData, broadcast = true) {
+      if (!sceneData) return;
+      currentScene = sceneData;
+
+      if (typeof sceneData.initialLon === 'number' && typeof sceneData.initialLat === 'number') {
+        lon = sceneData.initialLon;
+        lat = sceneData.initialLat;
+      }
+
+      const hudSceneTitle = document.getElementById('hud-scene-title');
+      if (hudSceneTitle) hudSceneTitle.textContent = sceneData.title || 'Untitled Scene';
+
+      const pickerLabel = document.getElementById('btn-scene-picker-label');
+      if (pickerLabel && currentTour && currentTour.scenes) {
+        pickerLabel.textContent = `Scene ${currentSceneIndex + 1} of ${currentTour.scenes.length}`;
+      }
+
+      const drawerTitle = document.getElementById('drawer-scene-title');
+      if (drawerTitle) drawerTitle.textContent = sceneData.title || 'Untitled Scene';
+
+      const drawerScript = document.getElementById('drawer-scene-script');
+      if (drawerScript) drawerScript.textContent = sceneData.script || 'No guide notes provided for this scene.';
+
+      const prevBtn = document.getElementById('btn-prev-scene');
+      const nextBtn = document.getElementById('btn-next-scene');
+      if (prevBtn && currentTour && currentTour.scenes) {
+        prevBtn.disabled = currentSceneIndex <= 0;
+      }
+      if (nextBtn && currentTour && currentTour.scenes) {
+        nextBtn.disabled = currentSceneIndex >= currentTour.scenes.length - 1;
+      }
+
+      let resolvedPanoUrl = sceneData.panorama;
+      if (resolvedPanoUrl) {
+        resolvedPanoUrl = await getAssetBlobUrl(resolvedPanoUrl);
+      }
+
+      if (resolvedPanoUrl && sphereMesh && textureLoader) {
+        textureLoader.load(
+          resolvedPanoUrl,
+          (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace || undefined;
+            tex.minFilter = THREE.LinearFilter;
+            tex.generateMipmaps = false;
+            if (sphereMesh.material) {
+              sphereMesh.material.map = tex;
+              sphereMesh.material.color.set(0xffffff);
+              sphereMesh.material.needsUpdate = true;
+            }
+          },
+          undefined,
+          (err) => {
+            console.warn('Failed to load scene panorama texture:', err);
+            showFloatingToast('Could not load 360° panorama image.');
+          }
+        );
+      }
+
+      renderHotspots(sceneData.hotspots || []);
+      renderDrawerTargetsList(sceneData.hotspots || []);
+
+      clearImpromptuSpotlight(false);
+
+      if (broadcast) {
+        broadcastTeacherAction({
+          type: 'TEACHER_CHANGE_SCENE',
+          roomCode: currentRoomCode,
+          sceneIndex: currentSceneIndex,
+          sceneData: sceneData
+        });
+      }
+    }
+
+    /* ---------------------------------------------------------
+       Image Optimizer (Client-side 4K Canvas Resize)
+       --------------------------------------------------------- */
+    function optimizeEquirectangularImage(file, callback) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 4096;
+          let w = img.width;
+          let h = img.height;
+
+          if (w > maxDim) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+
+          const optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          const origSize = file.size;
+          const newSize = Math.round((optimizedDataUrl.length * 3) / 4);
+          const savings = Math.max(0, Math.round(((origSize - newSize) / origSize) * 100));
+
+          callback({
+            dataUrl: optimizedDataUrl,
+            width: w,
+            height: h,
+            savings: savings
+          });
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    /* ---------------------------------------------------------
+       UI Handlers & Form Bindings
+       --------------------------------------------------------- */
+    function setupUIHandlers() {
+      document.addEventListener('submit', (e) => { e.preventDefault(); return false; }, true);
+
+      const tabDelivery = document.getElementById('btn-tab-delivery');
+      const tabStudio = document.getElementById('btn-tab-studio');
+      const btnBannerAction = document.getElementById('btn-banner-action');
+      const btnCreateTop = document.getElementById('btn-create-tour-top');
+      const searchInput = document.getElementById('input-search-tours');
+
+      tabDelivery.onclick = () => setPortalMode(false);
+      tabStudio.onclick = () => setPortalMode(true);
+
+      btnBannerAction.onclick = () => {
+        if (isStudioMode) {
+          openCreateTourModal();
+        } else {
+          const defaultTour = allTours[0] || DEFAULT_PRESET_TOURS[0];
+          enterExpeditionWorkspace(defaultTour);
+        }
+      };
+
+      btnCreateTop.onclick = () => openCreateTourModal();
+
+      searchInput.addEventListener('input', () => {
+        renderToursGrid();
+      });
+
+      document.getElementById('portal-btn-sync-cloud').onclick = () => fetchToursFromGoogleDrive();
+      document.getElementById('btn-back-portal').onclick = () => exitToPortal();
+
+      // Drawer
+      const drawer = document.getElementById('script-drawer');
+      document.getElementById('btn-toggle-drawer').onclick = () => drawer.classList.toggle('translate-x-full');
+      document.getElementById('btn-close-drawer').onclick = () => drawer.classList.add('translate-x-full');
+
+      // Font Size Adjuster in Teaching Guide Drawer
+      const FONT_SCALES = [85, 100, 115, 130, 150];
+      let currentFontScale = parseInt(localStorage.getItem('teacher_drawer_font_scale') || '100', 10);
+      if (!FONT_SCALES.includes(currentFontScale)) currentFontScale = 100;
+
+      function applyDrawerFontScale(scale) {
+        currentFontScale = scale;
+        localStorage.setItem('teacher_drawer_font_scale', scale);
+        const lblScale = document.getElementById('lbl-font-scale');
+        if (lblScale) lblScale.textContent = `${scale}%`;
+
+        const scriptEl = document.getElementById('drawer-scene-script');
+        if (scriptEl) {
+          scriptEl.style.fontSize = `${0.875 * (scale / 100)}rem`;
+          scriptEl.style.lineHeight = `${1.6 * (scale / 100)}rem`;
+        }
+
+        document.querySelectorAll('.drawer-target-notes').forEach(el => {
+          el.style.fontSize = `${0.75 * (scale / 100)}rem`;
+          el.style.lineHeight = `${1.45 * (scale / 100)}rem`;
+        });
+      }
+
+      const btnFontDec = document.getElementById('btn-font-decrease');
+      const btnFontReset = document.getElementById('btn-font-reset');
+      const btnFontInc = document.getElementById('btn-font-increase');
+
+      if (btnFontDec) {
+        btnFontDec.onclick = () => {
+          const idx = FONT_SCALES.indexOf(currentFontScale);
+          if (idx > 0) applyDrawerFontScale(FONT_SCALES[idx - 1]);
+        };
+      }
+      if (btnFontReset) {
+        btnFontReset.onclick = () => applyDrawerFontScale(100);
+      }
+      if (btnFontInc) {
+        btnFontInc.onclick = () => {
+          const idx = FONT_SCALES.indexOf(currentFontScale);
+          if (idx < FONT_SCALES.length - 1) applyDrawerFontScale(FONT_SCALES[idx + 1]);
+        };
+      }
+      applyDrawerFontScale(currentFontScale);
+
+      // Studio Deletion Button Handlers
+      const btnStudioDeleteTour = document.getElementById('btn-studio-delete-tour');
+      if (btnStudioDeleteTour) {
+        btnStudioDeleteTour.onclick = () => {
+          if (currentTour) promptDeleteTour(currentTour);
+        };
+      }
+
+      const btnStudioDeleteScene = document.getElementById('btn-studio-delete-scene');
+      if (btnStudioDeleteScene) {
+        btnStudioDeleteScene.onclick = () => promptDeleteCurrentScene();
+      }
+
+      const btnDrawerDeleteScene = document.getElementById('btn-drawer-delete-scene');
+      if (btnDrawerDeleteScene) {
+        btnDrawerDeleteScene.onclick = () => promptDeleteCurrentScene();
+      }
+
+      const btnCancelDelete = document.getElementById('btn-cancel-delete');
+      const btnConfirmDelete = document.getElementById('btn-confirm-delete');
+      const deleteModal = document.getElementById('delete-confirm-modal');
+
+      if (btnCancelDelete && deleteModal) {
+        btnCancelDelete.onclick = () => {
+          deleteModal.classList.add('hidden');
+          pendingDeleteAction = null;
+        };
+      }
+
+      if (btnConfirmDelete && deleteModal) {
+        btnConfirmDelete.onclick = () => {
+          if (pendingDeleteAction) {
+            pendingDeleteAction();
+          }
+          deleteModal.classList.add('hidden');
+          pendingDeleteAction = null;
+        };
+      }
+
+      // Network Settings Modal Interactions
+      const btnToggleNet = document.getElementById('btn-toggle-network-settings');
+      const modalNet = document.getElementById('network-settings-modal');
+      const btnCloseNet = document.getElementById('btn-close-network-modal');
+      const btnSaveNet = document.getElementById('btn-save-network-mode');
+      const radioCloud = document.getElementById('radio-mode-cloud');
+      const radioLocal = document.getElementById('radio-mode-local');
+      const lanConfigBox = document.getElementById('lan-ip-config');
+      const inputLanHost = document.getElementById('input-lan-host');
+      const inputLanPort = document.getElementById('input-lan-port');
+      const lblNetMode = document.getElementById('lbl-network-mode');
+
+      function updateNetModeLabel() {
+        if (lblNetMode) {
+          lblNetMode.textContent = networkConfig.mode === 'local' ? 'LAN Relay' : 'Cloud Mesh';
+        }
+      }
+      updateNetModeLabel();
+
+      if (btnToggleNet && modalNet) {
+        btnToggleNet.onclick = () => {
+          if (networkConfig.mode === 'local') {
+            radioLocal.checked = true;
+            lanConfigBox.classList.remove('hidden');
+          } else {
+            radioCloud.checked = true;
+            lanConfigBox.classList.add('hidden');
+          }
+          if (inputLanHost) inputLanHost.value = networkConfig.lanHost;
+          if (inputLanPort) inputLanPort.value = networkConfig.lanPort;
+          modalNet.classList.remove('hidden');
+        };
+      }
+
+      if (radioCloud && radioLocal && lanConfigBox) {
+        radioCloud.onchange = () => lanConfigBox.classList.add('hidden');
+        radioLocal.onchange = () => lanConfigBox.classList.remove('hidden');
+      }
+
+      if (btnCloseNet && modalNet) {
+        btnCloseNet.onclick = () => modalNet.classList.add('hidden');
+      }
+
+      if (btnSaveNet && modalNet) {
+        btnSaveNet.onclick = () => {
+          networkConfig.mode = radioLocal.checked ? 'local' : 'cloud';
+          networkConfig.lanHost = (inputLanHost.value || '192.168.1.100').trim();
+          networkConfig.lanPort = parseInt(inputLanPort.value || '9000', 10);
+
+          localStorage.setItem('expeditions_net_mode', networkConfig.mode);
+          localStorage.setItem('expeditions_lan_host', networkConfig.lanHost);
+          localStorage.setItem('expeditions_lan_port', networkConfig.lanPort);
+
+          updateNetModeLabel();
+          modalNet.classList.add('hidden');
+          showFloatingToast(`Network mode set to: ${networkConfig.mode === 'local' ? 'Offline LAN' : 'Cloud Mesh'}`);
+
+          if (teacherPeer) {
+            initTeacherPeerServer(currentRoomCode);
+          }
+        };
+      }
+
+      // Live Tour Switcher Modal Handlers
+      const btnQuickSwitchTour = document.getElementById('btn-quick-switch-tour');
+      const tourSwitcherModal = document.getElementById('tour-switcher-modal');
+      const btnCloseTourSwitcher = document.getElementById('btn-close-tour-switcher');
+
+      if (btnQuickSwitchTour && tourSwitcherModal) {
+        btnQuickSwitchTour.onclick = () => {
+          const grid = document.getElementById('tour-switcher-grid');
+          if (!grid) return;
+          grid.innerHTML = '';
+
+          allTours.forEach(tour => {
+            const isCurrent = currentTour && currentTour.id === tour.id;
+            const card = document.createElement('div');
+            card.className = `p-3.5 rounded-2xl border transition cursor-pointer flex items-center justify-between gap-3 ${
+              isCurrent ? 'bg-indigo-950/80 border-indigo-500 shadow-md shadow-indigo-600/30' : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+            }`;
+
+            const scenesCount = tour.scenes ? tour.scenes.length : 0;
+            const coverImg = tour.cover || (tour.scenes && tour.scenes[0] && tour.scenes[0].panorama) || 'https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?auto=format&fit=crop&w=400&q=80';
+
+            card.innerHTML = `
+              <div class="flex items-center gap-3 truncate">
+                <img src="${coverImg}" class="w-12 h-12 rounded-xl object-cover border border-slate-800 shrink-0" onerror="this.src='https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?auto=format&fit=crop&w=400&q=80'">
+                <div class="truncate">
+                  <h4 class="text-xs font-bold text-white truncate">${escapeHtml(tour.title)}</h4>
+                  <p class="text-[10px] text-slate-400 font-mono">${scenesCount} ${scenesCount === 1 ? 'Scene' : 'Scenes'} • ${escapeHtml(tour.subject || 'General')}</p>
+                </div>
+              </div>
+              <div>
+                ${
+                  isCurrent
+                    ? '<span class="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-500/30 px-2 py-1 rounded-lg">Active</span>'
+                    : '<button class="btn-select-tour bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-xl transition shadow active:scale-95">Switch</button>'
+                }
+              </div>
+            `;
+
+            if (!isCurrent) {
+              card.onclick = () => {
+                switchLiveTour(tour);
+                tourSwitcherModal.classList.add('hidden');
+              };
+            }
+
+            grid.appendChild(card);
+          });
+
+          tourSwitcherModal.classList.remove('hidden');
+        };
+      }
+
+      if (btnCloseTourSwitcher && tourSwitcherModal) {
+        btnCloseTourSwitcher.onclick = () => tourSwitcherModal.classList.add('hidden');
+      }
+
+      // Scene navigation
+      document.getElementById('btn-prev-scene').onclick = () => {
+        if (currentSceneIndex > 0) {
+          currentSceneIndex--;
+          loadScene(currentTour.scenes[currentSceneIndex], !isStudioMode);
+        }
+      };
+      document.getElementById('btn-next-scene').onclick = () => {
+        if (currentSceneIndex < currentTour.scenes.length - 1) {
+          currentSceneIndex++;
+          loadScene(currentTour.scenes[currentSceneIndex], !isStudioMode);
+        }
+      };
+
+      document.getElementById('btn-clear-impromptu').onclick = () => clearImpromptuSpotlight(true);
+
+      const btnForceSave = document.getElementById('btn-force-save-drive');
+      btnForceSave.onclick = () => {
+        if (currentTour) saveTourToGoogleDrive(currentTour);
+      };
+
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+          e.preventDefault();
+          if (isStudioMode && currentTour) {
+            saveTourToGoogleDrive(currentTour);
+          }
+        }
+      });
+
+      // Quick Scene Picker
+      document.getElementById('btn-scene-picker').onclick = () => {
+        const modal = document.getElementById('scene-picker-modal');
+        const grid = document.getElementById('scene-picker-grid');
+        grid.innerHTML = '';
+
+        currentTour.scenes.forEach((sc, idx) => {
+          const item = document.createElement('div');
+          item.className = `p-3 rounded-2xl border transition cursor-pointer flex items-center gap-3 ${idx === currentSceneIndex ? 'bg-indigo-950/80 border-indigo-500' : 'bg-slate-950 border-slate-800 hover:border-slate-700'}`;
+          item.innerHTML = `
+            <span class="w-6 h-6 rounded-lg bg-indigo-600/30 text-indigo-400 font-bold text-xs flex items-center justify-center">${idx + 1}</span>
+            <div class="truncate">
+              <h5 class="text-xs font-bold text-white truncate">${escapeHtml(sc.title)}</h5>
+              <p class="text-[10px] text-slate-400 font-mono">${(sc.hotspots || []).length} Targets</p>
+            </div>
+          `;
+          item.onclick = () => {
+            currentSceneIndex = idx;
+            loadScene(currentTour.scenes[idx], !isStudioMode);
+            modal.classList.add('hidden');
+          };
+          grid.appendChild(item);
+        });
+
+        modal.classList.remove('hidden');
+      };
+
+      document.getElementById('btn-close-scene-picker').onclick = () => {
+        document.getElementById('scene-picker-modal').classList.add('hidden');
+      };
+
+      function openCreateTourModal() {
+        document.getElementById('input-new-tour-title').value = '';
+        document.getElementById('input-new-tour-subject').value = '';
+        document.getElementById('input-new-tour-grade').value = '';
+        document.getElementById('input-new-tour-desc').value = '';
+        document.getElementById('create-tour-modal').classList.remove('hidden');
+      }
+
+      document.getElementById('btn-close-create-tour').onclick = () => {
+        document.getElementById('create-tour-modal').classList.add('hidden');
+      };
+      document.getElementById('btn-cancel-create-tour').onclick = () => {
+        document.getElementById('create-tour-modal').classList.add('hidden');
+      };
+
+      document.getElementById('btn-proceed-create-tour').onclick = () => {
+        const title = document.getElementById('input-new-tour-title').value.trim();
+        const subject = document.getElementById('input-new-tour-subject').value.trim();
+        const grade = document.getElementById('input-new-tour-grade').value.trim();
+        const desc = document.getElementById('input-new-tour-desc').value.trim();
+
+        if (!title) {
+          showFloatingToast('Please provide an expedition title.');
+          return;
+        }
+
+        stagedTourDraft = {
+          id: slugify(title),
+          title: title,
+          subject: subject || 'General',
+          grade: grade || 'All Grades',
+          description: desc,
+          cover: '',
+          scenes: []
+        };
+
+        document.getElementById('create-tour-modal').classList.add('hidden');
+
+        document.getElementById('input-scene-title').value = 'Scene 1: ' + title;
+        document.getElementById('input-scene-script').value = '';
+        document.getElementById('input-scene-url').value = '';
+        stagedPanoBase64 = null;
+        document.getElementById('pano-opt-status').classList.add('hidden');
+        document.getElementById('add-scene-modal').classList.remove('hidden');
+      };
+
+      // Modal: Add Scene
+      document.getElementById('btn-studio-add-scene').onclick = () => {
+        stagedTourDraft = null;
+        document.getElementById('input-scene-title').value = '';
+        document.getElementById('input-scene-script').value = '';
+        document.getElementById('input-scene-url').value = '';
+        stagedPanoBase64 = null;
+        document.getElementById('pano-opt-status').classList.add('hidden');
+        document.getElementById('add-scene-modal').classList.remove('hidden');
+      };
+
+      document.getElementById('btn-close-scene-modal').onclick = () => {
+        document.getElementById('add-scene-modal').classList.add('hidden');
+      };
+      document.getElementById('btn-cancel-scene-modal').onclick = () => {
+        document.getElementById('add-scene-modal').classList.add('hidden');
+      };
+
+      const dropZone = document.getElementById('drop-zone-pano');
+      const fileInput = document.getElementById('file-input-pano');
+
+      dropZone.onclick = () => fileInput.click();
+      fileInput.onchange = (e) => {
+        if (e.target.files && e.target.files[0]) {
+          processPanoFile(e.target.files[0]);
+        }
+      };
+
+      dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('border-purple-500'); };
+      dropZone.ondragleave = () => { dropZone.classList.remove('border-purple-500'); };
+      dropZone.ondrop = (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-purple-500');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          processPanoFile(e.dataTransfer.files[0]);
+        }
+      };
+
+      function processPanoFile(file) {
+        showFloatingToast('Optimizing 360° image for WebGL...');
+        optimizeEquirectangularImage(file, (opt) => {
+          stagedPanoBase64 = opt.dataUrl;
+          document.getElementById('pano-opt-status').classList.remove('hidden');
+          document.getElementById('pano-opt-label').textContent = `Optimized for WebGL (${opt.width}x${opt.height})`;
+          document.getElementById('pano-opt-savings').textContent = `-${opt.savings}% Size`;
+        });
+      }
+
+      document.getElementById('btn-submit-scene').onclick = () => {
+        const title = document.getElementById('input-scene-title').value.trim() || 'Untitled Scene';
+        const script = document.getElementById('input-scene-script').value.trim();
+        const urlInput = document.getElementById('input-scene-url').value.trim();
+        const panoUrl = stagedPanoBase64 || urlInput || DEFAULT_PRESET_TOURS[0].scenes[0].panorama;
+
+        const newScene = {
+          id: 'scene-' + Date.now(),
+          title: title,
+          script: script,
+          panorama: panoUrl,
+          hotspots: []
+        };
+
+        if (stagedTourDraft) {
+          stagedTourDraft.scenes.push(newScene);
+          stagedTourDraft.cover = panoUrl;
+          allTours.unshift(stagedTourDraft);
+          currentTour = stagedTourDraft;
+          currentSceneIndex = 0;
+          stagedTourDraft = null;
+        } else if (currentTour) {
+          currentTour.scenes.push(newScene);
+          currentSceneIndex = currentTour.scenes.length - 1;
+        }
+
+        saveToursToStorage(true);
+        document.getElementById('add-scene-modal').classList.add('hidden');
+        enterExpeditionWorkspace(currentTour);
+        loadScene(currentTour.scenes[currentSceneIndex], false);
+      };
+
+      // Modal: Hotspot Placement
+      document.getElementById('btn-studio-drop-target').onclick = () => {
+        editingHotspotId = null;
+        targetHotspotPhi = THREE.MathUtils.degToRad(90 - lat);
+        targetHotspotTheta = THREE.MathUtils.degToRad(lon);
+
+        document.getElementById('modal-hotspot-heading').textContent = 'Add Curriculum Target Marker';
+        document.getElementById('btn-save-hotspot-text').textContent = 'Save Target Marker';
+        document.getElementById('input-hotspot-title').value = '';
+        document.getElementById('input-hotspot-text').value = '';
+        document.getElementById('input-hotspot-image-url').value = '';
+        stagedHotspotImageBase64 = null;
+
+        const repoBox = document.getElementById('hotspot-reposition-box');
+        if (repoBox) repoBox.classList.add('hidden');
+        const posHint = document.getElementById('hotspot-pos-hint-text');
+        if (posHint) posHint.textContent = 'Marker positioned at current crosshair camera center.';
+
+        const previewBox = document.getElementById('hotspot-img-preview-box');
+        const previewImg = document.getElementById('hotspot-img-preview');
+        const uploadPrompt = document.getElementById('hotspot-img-upload-prompt');
+        const btnClearImg = document.getElementById('btn-clear-hotspot-img');
+
+        if (previewBox) previewBox.classList.add('hidden');
+        if (previewImg) previewImg.src = '';
+        if (uploadPrompt) uploadPrompt.classList.remove('hidden');
+        if (btnClearImg) btnClearImg.classList.add('hidden');
+
+        document.getElementById('add-hotspot-modal').classList.remove('hidden');
+      };
+
+      document.getElementById('btn-close-hotspot-modal').onclick = () => {
+        document.getElementById('add-hotspot-modal').classList.add('hidden');
+        editingHotspotId = null;
+      };
+      document.getElementById('btn-cancel-hotspot').onclick = () => {
+        document.getElementById('add-hotspot-modal').classList.add('hidden');
+        editingHotspotId = null;
+      };
+
+      const dropZoneHotspot = document.getElementById('drop-zone-hotspot-img');
+      const fileInputHotspot = document.getElementById('file-input-hotspot-img');
+      const btnClearHotspotImg = document.getElementById('btn-clear-hotspot-img');
+
+      if (dropZoneHotspot && fileInputHotspot) {
+        dropZoneHotspot.onclick = () => fileInputHotspot.click();
+        fileInputHotspot.onchange = (e) => {
+          if (e.target.files && e.target.files[0]) {
+            processHotspotImage(e.target.files[0]);
+          }
+        };
+
+        dropZoneHotspot.ondragover = (e) => { e.preventDefault(); dropZoneHotspot.classList.add('border-amber-400'); };
+        dropZoneHotspot.ondragleave = () => { dropZoneHotspot.classList.remove('border-amber-400'); };
+        dropZoneHotspot.ondrop = (e) => {
+          e.preventDefault();
+          dropZoneHotspot.classList.remove('border-amber-400');
+          if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            processHotspotImage(e.dataTransfer.files[0]);
+          }
+        };
+      }
+
+      if (btnClearHotspotImg) {
+        btnClearHotspotImg.onclick = (e) => {
+          e.stopPropagation();
+          stagedHotspotImageBase64 = null;
+          const inputUrl = document.getElementById('input-hotspot-image-url');
+          if (inputUrl) inputUrl.value = '';
+          const previewBox = document.getElementById('hotspot-img-preview-box');
+          const previewImg = document.getElementById('hotspot-img-preview');
+          const uploadPrompt = document.getElementById('hotspot-img-upload-prompt');
+          if (previewBox) previewBox.classList.add('hidden');
+          if (previewImg) previewImg.src = '';
+          if (uploadPrompt) uploadPrompt.classList.remove('hidden');
+          btnClearHotspotImg.classList.add('hidden');
+        };
+      }
+
+      function processHotspotImage(file) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onload = () => {
+            const maxDim = 1200;
+            let w = img.width;
+            let h = img.height;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            const compressed = canvas.toDataURL('image/jpeg', 0.82);
+            stagedHotspotImageBase64 = compressed;
+
+            const previewBox = document.getElementById('hotspot-img-preview-box');
+            const previewImg = document.getElementById('hotspot-img-preview');
+            const uploadPrompt = document.getElementById('hotspot-img-upload-prompt');
+            const btnClear = document.getElementById('btn-clear-hotspot-img');
+
+            if (previewImg) previewImg.src = compressed;
+            if (previewBox) previewBox.classList.remove('hidden');
+            if (uploadPrompt) uploadPrompt.classList.add('hidden');
+            if (btnClear) btnClear.classList.remove('hidden');
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+
+      document.getElementById('btn-save-hotspot').onclick = () => {
+        const title = document.getElementById('input-hotspot-title').value.trim();
+        const text = document.getElementById('input-hotspot-text').value.trim();
+        const imageUrlInput = document.getElementById('input-hotspot-image-url').value.trim();
+        const finalImage = stagedHotspotImageBase64 || imageUrlInput || null;
+        const chkRepo = document.getElementById('chk-hotspot-reposition');
+
+        if (!title) {
+          showFloatingToast('Please provide a target name.');
+          return;
+        }
+
+        if (editingHotspotId && currentScene && currentScene.hotspots) {
+          const target = currentScene.hotspots.find(h => h.id === editingHotspotId);
+          if (target) {
+            target.title = title;
+            target.text = text;
+            target.image = finalImage;
+            if (chkRepo && chkRepo.checked) {
+              target.phi = THREE.MathUtils.degToRad(90 - lat);
+              target.theta = THREE.MathUtils.degToRad(lon);
+            }
+          }
+          saveToursToStorage(true);
+          renderHotspots(currentScene.hotspots);
+          renderDrawerTargetsList(currentScene.hotspots);
+          document.getElementById('add-hotspot-modal').classList.add('hidden');
+          showFloatingToast(`Updated target "${title}".`);
+          editingHotspotId = null;
+          return;
+        }
+
+        const newTarget = {
+          id: 'hotspot-' + Date.now(),
+          title: title,
+          text: text,
+          image: finalImage,
+          phi: targetHotspotPhi,
+          theta: targetHotspotTheta
+        };
+
+        if (currentScene) {
+          if (!currentScene.hotspots) currentScene.hotspots = [];
+          currentScene.hotspots.push(newTarget);
+          saveToursToStorage(true);
+          renderHotspots(currentScene.hotspots);
+          renderDrawerTargetsList(currentScene.hotspots);
+        }
+
+        document.getElementById('add-hotspot-modal').classList.add('hidden');
+        showFloatingToast(`Target "${title}" added to scene.`);
+      };
+
+      document.getElementById('btn-drawer-sync-drive').onclick = () => {
+        if (currentTour) saveTourToGoogleDrive(currentTour);
+      };
+
+      const btnDismissFocus = document.getElementById('btn-broadcast-spotlight-clear');
+      if (btnDismissFocus) {
+        btnDismissFocus.onclick = () => dismissAllSpotlights(true);
+      }
+
+      const btnClearImpromptu = document.getElementById('btn-clear-impromptu');
+      if (btnClearImpromptu) {
+        btnClearImpromptu.onclick = () => dismissAllSpotlights(true);
+      }
+    }
+
+    function showFloatingToast(msg) {
+      const toast = document.getElementById('floating-toast');
+      const text = document.getElementById('toast-message');
+      if (!toast || !text) return;
+      text.textContent = msg;
+      toast.classList.remove('opacity-0');
+      setTimeout(() => { toast.classList.add('opacity-0'); }, 3000);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    /* ---------------------------------------------------------
+       Service Worker Registration for Offline PWA Support
+       --------------------------------------------------------- */
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then((reg) => console.log('Teacher PWA ServiceWorker active:', reg.scope))
+          .catch((err) => console.warn('ServiceWorker registration deferred:', err));
+      });
+    }
+
+    /* ---------------------------------------------------------
+       Lifecycle Startup
+       --------------------------------------------------------- */
+    window.addEventListener('DOMContentLoaded', () => {
+      initThreeEngine();
+      initToursState();
+      setupUIHandlers();
+      setPortalMode(false);
+    });
+  </script>
+</body>
+</html>
