@@ -280,6 +280,11 @@
         <i class="fa-solid fa-chevron-right text-xs"></i>
       </button>
 
+      <button id="btn-studio-edit-scene" class="hidden bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-amber-300 px-2.5 h-9 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95" title="Edit current scene details">
+        <i class="fa-solid fa-pen-to-square text-xs"></i>
+        <span class="hidden sm:inline">Edit Scene</span>
+      </button>
+
       <button id="btn-studio-delete-scene" class="hidden bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 px-2.5 h-9 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95" title="Delete current scene">
         <i class="fa-solid fa-trash-can text-xs"></i>
         <span class="hidden sm:inline">Delete Scene</span>
@@ -335,10 +340,16 @@
         <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-2">
           <div class="flex items-center justify-between">
             <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Active Scene</span>
-            <button id="btn-drawer-delete-scene" class="hidden text-rose-400 hover:text-rose-300 text-xs flex items-center gap-1 font-semibold transition" title="Delete this scene">
-              <i class="fa-solid fa-trash-can text-[10px]"></i>
-              <span>Delete Scene</span>
-            </button>
+            <div class="flex items-center gap-2">
+              <button id="btn-drawer-edit-scene" class="hidden text-amber-400 hover:text-amber-300 text-xs flex items-center gap-1 font-semibold transition" title="Edit scene title and curriculum narration">
+                <i class="fa-solid fa-pen-to-square text-[10px]"></i>
+                <span>Edit Scene</span>
+              </button>
+              <button id="btn-drawer-delete-scene" class="hidden text-rose-400 hover:text-rose-300 text-xs flex items-center gap-1 font-semibold transition" title="Delete this scene">
+                <i class="fa-solid fa-trash-can text-[10px]"></i>
+                <span>Delete Scene</span>
+              </button>
+            </div>
           </div>
           <h4 id="drawer-scene-title" class="text-base font-bold text-white">Scene Title</h4>
           <div class="max-h-64 overflow-y-auto pr-1">
@@ -921,6 +932,7 @@
     let stagedHotspotImageBase64 = null;
     let pendingDeleteAction = null;
     let editingHotspotId = null;
+    let editingSceneId = null;
 
     /* Networking - Multi-Client WebRTC Pool */
     let teacherPeer = null;
@@ -2062,7 +2074,9 @@
       const btnStudioDrop = document.getElementById('btn-studio-drop-target');
       const btnStudioDeleteTour = document.getElementById('btn-studio-delete-tour');
       const btnStudioDeleteScene = document.getElementById('btn-studio-delete-scene');
+      const btnStudioEditScene = document.getElementById('btn-studio-edit-scene');
       const btnDrawerDeleteScene = document.getElementById('btn-drawer-delete-scene');
+      const btnDrawerEditScene = document.getElementById('btn-drawer-edit-scene');
 
       if (isStudioMode) {
         btnForceSave.classList.remove('hidden');
@@ -2070,14 +2084,18 @@
         btnStudioDrop.classList.remove('hidden');
         if (btnStudioDeleteTour) btnStudioDeleteTour.classList.remove('hidden');
         if (btnStudioDeleteScene) btnStudioDeleteScene.classList.remove('hidden');
+        if (btnStudioEditScene) btnStudioEditScene.classList.remove('hidden');
         if (btnDrawerDeleteScene) btnDrawerDeleteScene.classList.remove('hidden');
+        if (btnDrawerEditScene) btnDrawerEditScene.classList.remove('hidden');
       } else {
         btnForceSave.classList.add('hidden');
         btnStudioAdd.classList.add('hidden');
         btnStudioDrop.classList.add('hidden');
         if (btnStudioDeleteTour) btnStudioDeleteTour.classList.add('hidden');
         if (btnStudioDeleteScene) btnStudioDeleteScene.classList.add('hidden');
+        if (btnStudioEditScene) btnStudioEditScene.classList.add('hidden');
         if (btnDrawerDeleteScene) btnDrawerDeleteScene.classList.add('hidden');
+        if (btnDrawerEditScene) btnDrawerEditScene.classList.add('hidden');
         if (!teacherPeer || teacherPeer.destroyed) {
           initTeacherPeerServer(currentRoomCode);
         } else {
@@ -2414,6 +2432,16 @@
         btnStudioDeleteScene.onclick = () => promptDeleteCurrentScene();
       }
 
+      const btnStudioEditScene = document.getElementById('btn-studio-edit-scene');
+      if (btnStudioEditScene) {
+        btnStudioEditScene.onclick = () => openEditSceneModal();
+      }
+
+      const btnDrawerEditScene = document.getElementById('btn-drawer-edit-scene');
+      if (btnDrawerEditScene) {
+        btnDrawerEditScene.onclick = () => openEditSceneModal();
+      }
+
       const btnDrawerDeleteScene = document.getElementById('btn-drawer-delete-scene');
       if (btnDrawerDeleteScene) {
         btnDrawerDeleteScene.onclick = () => promptDeleteCurrentScene();
@@ -2668,13 +2696,57 @@
 
       // Modal: Add Scene
       document.getElementById('btn-studio-add-scene').onclick = () => {
+        editingSceneId = null;
         stagedTourDraft = null;
+        const modalHeading = document.querySelector('#add-scene-modal h3');
+        if (modalHeading) modalHeading.textContent = 'Add 360° Scene to Tour';
+        const submitBtnText = document.querySelector('#btn-submit-scene span');
+        if (submitBtnText) submitBtnText.textContent = 'Save & Load Scene';
+
         document.getElementById('input-scene-title').value = '';
         document.getElementById('input-scene-script').value = '';
         document.getElementById('input-scene-url').value = '';
         stagedPanoBase64 = null;
         document.getElementById('pano-opt-status').classList.add('hidden');
         document.getElementById('add-scene-modal').classList.remove('hidden');
+      };
+
+      function openEditSceneModal() {
+        if (!currentScene) return;
+        editingSceneId = currentScene.id;
+        stagedTourDraft = null;
+
+        const modalHeading = document.querySelector('#add-scene-modal h3');
+        if (modalHeading) modalHeading.textContent = 'Edit Scene Details';
+        const submitBtnText = document.querySelector('#btn-submit-scene span');
+        if (submitBtnText) submitBtnText.textContent = 'Update Scene Details';
+
+        document.getElementById('input-scene-title').value = currentScene.title || '';
+        document.getElementById('input-scene-script').value = currentScene.script || '';
+        document.getElementById('input-scene-url').value = (currentScene.panorama && currentScene.panorama.startsWith('http')) ? currentScene.panorama : '';
+        stagedPanoBase64 = (currentScene.panorama && currentScene.panorama.startsWith('data:image/')) ? currentScene.panorama : null;
+
+        const optStatus = document.getElementById('pano-opt-status');
+        if (optStatus) {
+          if (currentScene.panorama) {
+            optStatus.classList.remove('hidden');
+            document.getElementById('pano-opt-label').textContent = 'Existing 360° Panorama Loaded (Replace below if desired)';
+            document.getElementById('pano-opt-savings').textContent = 'Active';
+          } else {
+            optStatus.classList.add('hidden');
+          }
+        }
+
+        document.getElementById('add-scene-modal').classList.remove('hidden');
+      }
+
+      document.getElementById('btn-close-scene-modal').onclick = () => {
+        document.getElementById('add-scene-modal').classList.add('hidden');
+        editingSceneId = null;
+      };
+      document.getElementById('btn-cancel-scene-modal').onclick = () => {
+        document.getElementById('add-scene-modal').classList.add('hidden');
+        editingSceneId = null;
       };
 
       document.getElementById('btn-close-scene-modal').onclick = () => {
@@ -2718,6 +2790,32 @@
         const title = document.getElementById('input-scene-title').value.trim() || 'Untitled Scene';
         const script = document.getElementById('input-scene-script').value.trim();
         const urlInput = document.getElementById('input-scene-url').value.trim();
+
+        if (editingSceneId && currentTour && currentTour.scenes) {
+          const targetScene = currentTour.scenes.find(s => s.id === editingSceneId);
+          if (targetScene) {
+            targetScene.title = title;
+            targetScene.script = script;
+            if (stagedPanoBase64) {
+              targetScene.panorama = stagedPanoBase64;
+            } else if (urlInput) {
+              targetScene.panorama = urlInput;
+            }
+
+            if (currentSceneIndex === 0 && (!currentTour.cover || currentTour.cover.startsWith('data:image/'))) {
+              currentTour.cover = targetScene.panorama;
+            }
+
+            currentScene = targetScene;
+            saveToursToStorage(true);
+            loadScene(currentScene, false);
+            showFloatingToast(`Updated scene: "${title}"`);
+          }
+          document.getElementById('add-scene-modal').classList.add('hidden');
+          editingSceneId = null;
+          return;
+        }
+
         const panoUrl = stagedPanoBase64 || urlInput || DEFAULT_PRESET_TOURS[0].scenes[0].panorama;
 
         const newScene = {
