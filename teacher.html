@@ -2360,14 +2360,14 @@
           enterExpeditionWorkspace(defaultTour);
         }
       };
-
-      btnCreateTop.onclick = () => openCreateTourModal();
-
-      searchInput.addEventListener('input', () => {
-        renderToursGrid();
-      });
-
-      document.getElementById('portal-btn-sync-cloud').onclick = () => fetchToursFromGoogleDrive();
+      document.getElementById('portal-btn-sync-cloud').onclick = () => {
+        // Prevent downloading old cloud data if a save is in progress or unsaved changes exist
+        if (document.getElementById('portal-cloud-status')?.textContent?.includes('Saving')) {
+          showFloatingToast('Cloud save still in progress. Please wait a moment...');
+          return;
+        }
+        fetchToursFromGoogleDrive();
+      };
       document.getElementById('btn-back-portal').onclick = () => exitToPortal();
 
       // Drawer
@@ -2975,7 +2975,17 @@
           return;
         }
 
-        if (editingHotspotId && currentScene && currentScene.hotspots) {
+        if (!currentScene) {
+          showFloatingToast('No active scene selected.');
+          return;
+        }
+
+        if (!currentScene.hotspots) {
+          currentScene.hotspots = [];
+        }
+
+        if (editingHotspotId) {
+          // UPDATE EXISTING TARGET
           const target = currentScene.hotspots.find(h => h.id === editingHotspotId);
           if (target) {
             target.title = title;
@@ -2986,38 +2996,47 @@
               target.theta = THREE.MathUtils.degToRad(lon);
             }
           }
-          saveToursToStorage(true);
-          renderHotspots(currentScene.hotspots);
-          renderDrawerTargetsList(currentScene.hotspots);
-          document.getElementById('add-hotspot-modal').classList.add('hidden');
           showFloatingToast(`Updated target "${title}".`);
           editingHotspotId = null;
-          return;
-        }
-
-        const newTarget = {
-          id: 'hotspot-' + Date.now(),
-          title: title,
-          text: text,
-          image: finalImage,
-          phi: targetHotspotPhi,
-          theta: targetHotspotTheta
-        };
-
-        if (currentScene) {
-          if (!currentScene.hotspots) currentScene.hotspots = [];
+        } else {
+          // CREATE NEW TARGET
+          const newTarget = {
+            id: 'hotspot-' + Date.now(),
+            title: title,
+            text: text,
+            image: finalImage,
+            phi: targetHotspotPhi,
+            theta: targetHotspotTheta
+          };
           currentScene.hotspots.push(newTarget);
-          saveToursToStorage(true);
-          renderHotspots(currentScene.hotspots);
-          renderDrawerTargetsList(currentScene.hotspots);
+          showFloatingToast(`Target "${title}" added to scene.`);
         }
+
+        // CRITICAL FIX: Explicitly bind the scene back to the tour object and library
+        if (currentTour && currentTour.scenes) {
+          currentTour.scenes[currentSceneIndex] = currentScene;
+          const tourIdx = allTours.findIndex(t => t.id === currentTour.id);
+          if (tourIdx >= 0) {
+            allTours[tourIdx] = currentTour;
+          }
+        }
+
+        // Immediately persist locally and auto-sync to Drive
+        saveToursToStorage(true);
+        renderHotspots(currentScene.hotspots);
+        renderDrawerTargetsList(currentScene.hotspots);
 
         document.getElementById('add-hotspot-modal').classList.add('hidden');
-        showFloatingToast(`Target "${title}" added to scene.`);
       };
 
       document.getElementById('btn-drawer-sync-drive').onclick = () => {
-        if (currentTour) saveTourToGoogleDrive(currentTour);
+        if (currentTour) {
+          // Commit current scene state to tour before pushing to Drive
+          if (currentScene && currentTour.scenes) {
+            currentTour.scenes[currentSceneIndex] = currentScene;
+          }
+          saveTourToGoogleDrive(currentTour);
+        }
       };
 
       const btnDismissFocus = document.getElementById('btn-broadcast-spotlight-clear');
