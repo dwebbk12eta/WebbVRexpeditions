@@ -194,7 +194,7 @@
 
         <!-- Room Code & Connection Pill -->
         <div id="hud-room-badge" class="bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 backdrop-blur-md">
-          <i class="fa-solid fa-tower-broadcast text-emerald-400 text-[10px]"></i>
+          <i class="fa-solid fa-tower-broadcast text-emerald-400 text-[10px]" id="hud-room-icon"></i>
           <span id="hud-room-code">ROOM 48291</span>
         </div>
 
@@ -206,7 +206,7 @@
 
         <!-- Student Count Indicator -->
         <div id="hud-students-badge" class="bg-slate-900/90 border border-slate-700/80 text-slate-300 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md">
-          <i class="fa-solid fa-users text-indigo-400 text-[11px]"></i>
+          <i class="fa-solid fa-users text-indigo-400 text-[11px]" id="hud-students-icon"></i>
           <span id="hud-students-count">0 Students</span>
         </div>
 
@@ -953,9 +953,6 @@
         .replace(/^-+|-+$/g, '');
     }
 
-    /* ---------------------------------------------------------
-       WebRTC PeerJS & Broadcast Networking (Teacher Multi-Client Host)
-       --------------------------------------------------------- */
     function setSignalingUI(state, text) {
       const dot = document.getElementById('hud-signal-dot');
       const label = document.getElementById('hud-signal-text');
@@ -966,12 +963,56 @@
         dot.className = 'w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50';
       } else if (state === 'connecting') {
         dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+      } else if (state === 'disabled') {
+        dot.className = 'w-2 h-2 rounded-full bg-slate-500';
       } else {
         dot.className = 'w-2 h-2 rounded-full bg-rose-500';
       }
     }
 
+    function stopTeacherBroadcast() {
+      // Disconnect all connected students
+      studentConnections.forEach((conn) => {
+        try {
+          if (conn.open) {
+            conn.send({
+              type: 'TEACHER_BROADCAST_STOPPED',
+              reason: 'Teacher switched to Studio editing mode'
+            });
+            conn.close();
+          }
+        } catch (e) {}
+      });
+      studentConnections.clear();
+      connectedStudents.clear();
+
+      // Clear student avatars on the teacher's screen
+      if (studentGazeGroup) {
+        studentGazeMeshes.forEach((item) => {
+          studentGazeGroup.remove(item.sprite);
+          if (item.sprite.material.map) item.sprite.material.map.dispose();
+          item.sprite.material.dispose();
+        });
+        studentGazeMeshes.clear();
+      }
+
+      // Destroy the WebRTC peer so new students cannot discover the room
+      if (teacherPeer) {
+        try { teacherPeer.destroy(); } catch (e) {}
+        teacherPeer = null;
+      }
+
+      setSignalingUI('disabled', 'Broadcasting: Off (Studio)');
+      updateStudentsCountUI();
+    }
+
     function initTeacherPeerServer(roomCode) {
+      if (isStudioMode) {
+        // Never start peer broadcasting in Studio Mode
+        stopTeacherBroadcast();
+        return;
+      }
+
       if (teacherPeer) {
         try { teacherPeer.destroy(); } catch (e) {}
         teacherPeer = null;
@@ -1549,13 +1590,30 @@
     }
 
     function updateStudentsCountUI() {
+      const hudEl = document.getElementById('hud-students-count');
+      const hudBadge = document.getElementById('hud-students-badge');
+      const drawerEl = document.getElementById('drawer-students-count');
+      const listEl = document.getElementById('drawer-students-list');
+
+      if (isStudioMode) {
+        if (hudEl) hudEl.textContent = 'Broadcast Off';
+        if (hudBadge) {
+          hudBadge.className = 'bg-slate-900/90 border border-slate-800 text-slate-500 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md';
+        }
+        if (drawerEl) drawerEl.textContent = 'Offline (Studio)';
+        if (listEl) {
+          listEl.innerHTML = `<span class="text-[11px] text-amber-400/90 italic"><i class="fa-solid fa-lock text-[10px] mr-1"></i>Broadcasting is paused while editing in Tour Studio.</span>`;
+        }
+        return;
+      }
+
       const count = connectedStudents.size;
       const countText = `${count} ${count === 1 ? 'Student' : 'Students'}`;
 
-      const hudEl = document.getElementById('hud-students-count');
       if (hudEl) hudEl.textContent = countText;
-
-      const drawerEl = document.getElementById('drawer-students-count');
+      if (hudBadge) {
+        hudBadge.className = 'bg-slate-900/90 border border-slate-700/80 text-slate-300 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md';
+      }
       if (drawerEl) drawerEl.textContent = `${count} Active`;
 
       studentGazeMeshes.forEach((_, key) => {
@@ -1564,7 +1622,6 @@
         }
       });
 
-      const listEl = document.getElementById('drawer-students-list');
       if (listEl) {
         if (count === 0) {
           listEl.innerHTML = `<span class="text-[11px] text-slate-500 italic">No students currently connected</span>`;
@@ -1900,6 +1957,9 @@
         if (btnBannerActionText) btnBannerActionText.textContent = 'Create New Tour';
         if (btnCreateTop) btnCreateTop.classList.remove('hidden');
         if (libraryHeading) libraryHeading.textContent = 'Expeditions in Studio';
+
+        // Cease all broadcasting and disconnect students when entering Studio
+        stopTeacherBroadcast();
       } else {
         tabDelivery.className = 'px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-indigo-600 text-white shadow-md shadow-indigo-600/30';
         tabStudio.className = 'px-4 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition flex items-center gap-2';
@@ -2066,7 +2126,21 @@
 
       document.getElementById('hud-tour-title').textContent = tour.title;
       document.getElementById('hud-mode-label').textContent = isStudioMode ? 'Studio Mode' : 'Presenter Mode';
-      document.getElementById('hud-room-code').textContent = `ROOM ${currentRoomCode}`;
+
+      const hudRoomBadge = document.getElementById('hud-room-badge');
+      const hudRoomIcon = document.getElementById('hud-room-icon');
+      const hudRoomCode = document.getElementById('hud-room-code');
+
+      if (isStudioMode) {
+        if (hudRoomBadge) hudRoomBadge.className = 'bg-amber-950/80 border border-amber-500/40 text-amber-300 px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 backdrop-blur-md';
+        if (hudRoomIcon) hudRoomIcon.className = 'fa-solid fa-eye-slash text-amber-400 text-[10px]';
+        if (hudRoomCode) hudRoomCode.textContent = 'STUDIO (OFFLINE)';
+      } else {
+        if (hudRoomBadge) hudRoomBadge.className = 'bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 backdrop-blur-md';
+        if (hudRoomIcon) hudRoomIcon.className = 'fa-solid fa-tower-broadcast text-emerald-400 text-[10px]';
+        if (hudRoomCode) hudRoomCode.textContent = `ROOM ${currentRoomCode}`;
+      }
+
       document.getElementById('drawer-code-bold').textContent = currentRoomCode;
 
       const btnForceSave = document.getElementById('btn-force-save-drive');
@@ -2087,6 +2161,9 @@
         if (btnStudioEditScene) btnStudioEditScene.classList.remove('hidden');
         if (btnDrawerDeleteScene) btnDrawerDeleteScene.classList.remove('hidden');
         if (btnDrawerEditScene) btnDrawerEditScene.classList.remove('hidden');
+
+        // Ensure broadcasting is completely shut down in Studio
+        stopTeacherBroadcast();
       } else {
         btnForceSave.classList.add('hidden');
         btnStudioAdd.classList.add('hidden');
@@ -2096,6 +2173,7 @@
         if (btnStudioEditScene) btnStudioEditScene.classList.add('hidden');
         if (btnDrawerDeleteScene) btnDrawerDeleteScene.classList.add('hidden');
         if (btnDrawerEditScene) btnDrawerEditScene.classList.add('hidden');
+
         if (!teacherPeer || teacherPeer.destroyed) {
           initTeacherPeerServer(currentRoomCode);
         } else {
@@ -2111,48 +2189,6 @@
 
       if (currentScene) {
         loadScene(currentScene, !isStudioMode);
-      }
-    }
-
-    /* ---------------------------------------------------------
-       Deletion Handlers (Tours & Scenes)
-       --------------------------------------------------------- */
-    function promptDeleteTour(tour) {
-      if (!tour) return;
-      pendingDeleteAction = () => executeDeleteTour(tour);
-      document.getElementById('delete-modal-title').textContent = 'Delete Expedition?';
-      document.getElementById('delete-modal-desc').textContent = `Are you sure you want to permanently delete "${tour.title}"? This will remove all scenes and targets.`;
-      document.getElementById('btn-confirm-delete-text').textContent = 'Delete Tour';
-      document.getElementById('delete-confirm-modal').classList.remove('hidden');
-    }
-
-    async function executeDeleteTour(tour) {
-      allTours = allTours.filter(t => t.id !== tour.id);
-      saveToursToStorage(false);
-
-      showFloatingToast(`Deleted tour "${tour.title}"`);
-
-      if (currentTour && currentTour.id === tour.id) {
-        currentTour = null;
-        currentScene = null;
-        exitToPortal();
-      } else {
-        renderToursGrid();
-      }
-
-      try {
-        await fetch(DRIVE_API_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            action: 'DELETE_TOUR',
-            tourId: tour.id,
-            tourTitle: tour.title
-          }),
-          mode: 'cors'
-        });
-      } catch (err) {
-        console.warn('Backend tour deletion failed or deferred:', err);
       }
     }
 
