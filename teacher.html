@@ -24,6 +24,9 @@
   <!-- Three.js (Core 3D Engine for 360 Panoramas and Hotspots) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
+  <!-- NoSleep.js (Proven iOS / iPadOS Safari Screen Keep-Awake Engine) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/nosleep/0.12.0/NoSleep.min.js"></script>
+
   <style>
     html, body {
       margin: 0;
@@ -204,9 +207,15 @@
           <span id="hud-signal-text" class="hidden md:inline">Signal: Initializing...</span>
         </div>
 
+        <!-- iPad Keep-Awake Status Pill -->
+        <div id="hud-wake-badge" class="bg-slate-900/90 border border-slate-800 text-slate-400 px-2 py-1 rounded-xl text-[11px] font-mono flex items-center gap-1.5 backdrop-blur-md" title="Screen Sleep Prevention">
+          <i class="fa-solid fa-sun text-amber-400 text-[10px]" id="hud-wake-icon"></i>
+          <span class="hidden lg:inline">Screen Awake</span>
+        </div>
+
         <!-- Student Count Indicator -->
         <div id="hud-students-badge" class="bg-slate-900/90 border border-slate-700/80 text-slate-300 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md">
-          <i class="fa-solid fa-users text-indigo-400 text-[11px]" id="hud-students-icon"></i>
+          <i class="fa-solid fa-users text-indigo-400 text-[11px]"></i>
           <span id="hud-students-count">0 Students</span>
         </div>
 
@@ -280,8 +289,9 @@
         <i class="fa-solid fa-chevron-right text-xs"></i>
       </button>
 
-      <button id="btn-studio-edit-scene" class="hidden bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-amber-300 px-2.5 h-9 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95" title="Edit current scene details">
-        <i class="fa-solid fa-pen-to-square text-xs"></i>
+      <!-- Edit Scene Details Button (Studio Mode) -->
+      <button id="btn-studio-edit-scene" class="hidden bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 px-2.5 h-9 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition active:scale-95" title="Edit scene title and description">
+        <i class="fa-solid fa-pen-to-square text-xs text-indigo-400"></i>
         <span class="hidden sm:inline">Edit Scene</span>
       </button>
 
@@ -341,13 +351,13 @@
           <div class="flex items-center justify-between">
             <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Active Scene</span>
             <div class="flex items-center gap-2">
-              <button id="btn-drawer-edit-scene" class="hidden text-amber-400 hover:text-amber-300 text-xs flex items-center gap-1 font-semibold transition" title="Edit scene title and curriculum narration">
+              <button id="btn-drawer-edit-scene" class="hidden text-indigo-400 hover:text-indigo-300 text-xs flex items-center gap-1 font-semibold transition" title="Edit scene title and talking points">
                 <i class="fa-solid fa-pen-to-square text-[10px]"></i>
                 <span>Edit Scene</span>
               </button>
               <button id="btn-drawer-delete-scene" class="hidden text-rose-400 hover:text-rose-300 text-xs flex items-center gap-1 font-semibold transition" title="Delete this scene">
                 <i class="fa-solid fa-trash-can text-[10px]"></i>
-                <span>Delete Scene</span>
+                <span>Delete</span>
               </button>
             </div>
           </div>
@@ -376,7 +386,7 @@
             </span>
             <span id="drawer-students-count" class="font-mono text-indigo-400 font-bold">0 Active</span>
           </div>
-          <p class="text-[11px] text-slate-400">
+          <p class="text-[11px] text-slate-400" id="drawer-code-description">
             Students join via the Student Viewer using room code <strong id="drawer-code-bold" class="text-indigo-300 font-mono">48291</strong>.
           </p>
           <div id="drawer-students-list" class="flex flex-wrap gap-1.5 pt-1">
@@ -541,7 +551,7 @@
       <div class="flex items-center justify-between border-b border-slate-800 pb-4">
         <div>
           <span class="text-[10px] font-bold uppercase tracking-wider text-purple-400">Scene Editor</span>
-          <h3 class="text-lg font-black text-white">Add 360° Scene to Tour</h3>
+          <h3 id="modal-scene-heading" class="text-lg font-black text-white">Add 360° Scene to Tour</h3>
         </div>
         <button type="button" id="btn-close-scene-modal" class="text-slate-400 hover:text-white w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center">
           <i class="fa-solid fa-xmark text-xs"></i>
@@ -556,7 +566,7 @@
 
         <div>
           <label class="block text-slate-300 text-xs font-semibold mb-1">Teacher Curriculum Narration</label>
-          <textarea id="input-scene-script" rows="3" placeholder="Enter teacher talking points and guide notes for this location..." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500 transition"></textarea>
+          <textarea id="input-scene-script" rows="4" placeholder="Enter teacher talking points and guide notes for this location..." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500 transition"></textarea>
         </div>
 
         <div class="space-y-2">
@@ -589,7 +599,7 @@
           <button type="button" id="btn-cancel-scene-modal" class="text-slate-400 hover:text-white px-4 py-2 rounded-xl text-xs font-semibold transition">Cancel</button>
           <button type="button" id="btn-submit-scene" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-purple-600/30 transition flex items-center gap-2 active:scale-95">
             <i class="fa-solid fa-floppy-disk text-xs"></i>
-            <span>Save & Load Scene</span>
+            <span id="btn-submit-scene-text">Save & Load Scene</span>
           </button>
         </div>
       </div>
@@ -617,7 +627,7 @@
 
         <div>
           <label class="block text-slate-300 text-xs font-semibold mb-1">Information / Discussion Notes *</label>
-          <textarea id="input-hotspot-text" rows="5" placeholder="Point students toward this detail, background facts, and discussion questions (scrollable with no length limit)..." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"></textarea>
+          <textarea id="input-hotspot-text" rows="5" placeholder="Point students toward this detail, background facts, and discussion questions..." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition"></textarea>
         </div>
 
         <!-- Hotspot Detail Image Upload (Optional) -->
@@ -818,7 +828,6 @@
         }
       }
 
-      // Save tour metadata to DB
       await new Promise((resolve) => {
         const tx = db.transaction(STORE_TOURS, 'readwrite');
         tx.objectStore(STORE_TOURS).put(tour);
@@ -907,6 +916,7 @@
     let currentRoomCode = "48291";
     let connectedStudents = new Map();
     let downloadedTourIds = new Set();
+    let isDriveSyncing = false;
 
     /* Network Configuration (Cloud vs Offline LAN) */
     let networkConfig = {
@@ -926,13 +936,17 @@
     let onPointerDownLon = 0, onPointerDownLat = 0;
     let targetHotspotPhi = 0, targetHotspotTheta = 0;
 
-    /* Temporary Upload State */
+    /* Temporary Upload / Editing State */
     let stagedPanoBase64 = null;
     let stagedTourDraft = null;
     let stagedHotspotImageBase64 = null;
     let pendingDeleteAction = null;
     let editingHotspotId = null;
-    let editingSceneId = null;
+    let isEditingExistingScene = false;
+
+    /* iPad Screen Keep-Awake Sentinel */
+    let teacherWakeLock = null;
+    let noSleepInstance = null;
 
     /* Networking - Multi-Client WebRTC Pool */
     let teacherPeer = null;
@@ -953,6 +967,69 @@
         .replace(/^-+|-+$/g, '');
     }
 
+    /* ---------------------------------------------------------
+       Screen Wake Lock & iPad Safari Keep-Awake Engine
+       --------------------------------------------------------- */
+    async function activateScreenKeepAwake() {
+      if (typeof NoSleep !== 'undefined') {
+        if (!noSleepInstance) {
+          noSleepInstance = new NoSleep();
+        }
+        try {
+          noSleepInstance.enable();
+        } catch (e) {
+          console.warn('[NoSleep] enable failed:', e);
+        }
+      }
+
+      if ('wakeLock' in navigator) {
+        try {
+          if (!teacherWakeLock) {
+            teacherWakeLock = await navigator.wakeLock.request('screen');
+            teacherWakeLock.addEventListener('release', () => {
+              teacherWakeLock = null;
+              updateWakeStatusUI(false);
+            });
+          }
+        } catch (err) {
+          console.warn('[WakeLock] Native lock rejected:', err);
+        }
+      }
+
+      updateWakeStatusUI(true);
+    }
+
+    function updateWakeStatusUI(isActive) {
+      const icon = document.getElementById('hud-wake-icon');
+      const badge = document.getElementById('hud-wake-badge');
+      if (!icon || !badge) return;
+
+      if (isActive) {
+        icon.className = 'fa-solid fa-sun text-amber-400 text-[10px] animate-pulse';
+        badge.className = 'bg-slate-900/90 border border-slate-700/80 text-amber-400 px-2 py-1 rounded-xl text-[11px] font-mono flex items-center gap-1.5 backdrop-blur-md';
+      } else {
+        icon.className = 'fa-solid fa-moon text-slate-500 text-[10px]';
+        badge.className = 'bg-slate-900/90 border border-slate-800 text-slate-500 px-2 py-1 rounded-xl text-[11px] font-mono flex items-center gap-1.5 backdrop-blur-md';
+      }
+    }
+
+    function attachUserInteractionWakeLock() {
+      const triggerWake = () => {
+        activateScreenKeepAwake();
+      };
+      document.addEventListener('touchstart', triggerWake, { passive: true });
+      document.addEventListener('click', triggerWake, { passive: true });
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !document.getElementById('view-hud')?.classList.contains('hidden')) {
+        activateScreenKeepAwake();
+      }
+    });
+
+    /* ---------------------------------------------------------
+       WebRTC PeerJS & Broadcast Networking (Teacher Multi-Client Host)
+       --------------------------------------------------------- */
     function setSignalingUI(state, text) {
       const dot = document.getElementById('hud-signal-dot');
       const label = document.getElementById('hud-signal-text');
@@ -963,52 +1040,46 @@
         dot.className = 'w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50';
       } else if (state === 'connecting') {
         dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
-      } else if (state === 'disabled') {
-        dot.className = 'w-2 h-2 rounded-full bg-slate-500';
       } else {
         dot.className = 'w-2 h-2 rounded-full bg-rose-500';
       }
     }
 
     function stopTeacherBroadcast() {
-      // Disconnect all connected students
-      studentConnections.forEach((conn) => {
-        try {
-          if (conn.open) {
-            conn.send({
-              type: 'TEACHER_BROADCAST_STOPPED',
-              reason: 'Teacher switched to Studio editing mode'
-            });
-            conn.close();
-          }
-        } catch (e) {}
-      });
-      studentConnections.clear();
-      connectedStudents.clear();
-
-      // Clear student avatars on the teacher's screen
-      if (studentGazeGroup) {
-        studentGazeMeshes.forEach((item) => {
-          studentGazeGroup.remove(item.sprite);
-          if (item.sprite.material.map) item.sprite.material.map.dispose();
-          item.sprite.material.dispose();
-        });
-        studentGazeMeshes.clear();
-      }
-
-      // Destroy the WebRTC peer so new students cannot discover the room
       if (teacherPeer) {
-        try { teacherPeer.destroy(); } catch (e) {}
+        try {
+          studentConnections.forEach((conn) => {
+            if (conn && conn.open) {
+              try {
+                conn.send({ type: 'TEACHER_DISCONNECTED', message: 'Teacher switched to Studio editing mode.' });
+                conn.close();
+              } catch (e) {}
+            }
+          });
+          teacherPeer.destroy();
+        } catch (e) {}
         teacherPeer = null;
       }
-
-      setSignalingUI('disabled', 'Broadcasting: Off (Studio)');
+      studentConnections.clear();
+      connectedStudents.clear();
       updateStudentsCountUI();
+      setSignalingUI('disabled', 'Broadcasting: Disabled (Studio Mode)');
+
+      const hudRoomCode = document.getElementById('hud-room-code');
+      const hudRoomBadge = document.getElementById('hud-room-badge');
+      const hudRoomIcon = document.getElementById('hud-room-icon');
+      if (hudRoomCode) hudRoomCode.textContent = 'STUDIO (OFFLINE)';
+      if (hudRoomBadge) hudRoomBadge.className = 'bg-amber-950/80 border border-amber-500/40 text-amber-300 px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 backdrop-blur-md';
+      if (hudRoomIcon) hudRoomIcon.className = 'fa-solid fa-eye-slash text-amber-400 text-[10px]';
+
+      const drawerCodeDesc = document.getElementById('drawer-code-description');
+      if (drawerCodeDesc) {
+        drawerCodeDesc.innerHTML = `<span class="text-amber-400 font-semibold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Broadcasting is paused while editing in Studio.</span>`;
+      }
     }
 
     function initTeacherPeerServer(roomCode) {
       if (isStudioMode) {
-        // Never start peer broadcasting in Studio Mode
         stopTeacherBroadcast();
         return;
       }
@@ -1023,6 +1094,18 @@
 
       const hostPeerId = `teacher-room-${roomCode}`;
       setSignalingUI('connecting', `Signal: Registering ${hostPeerId}...`);
+
+      const hudRoomCode = document.getElementById('hud-room-code');
+      const hudRoomBadge = document.getElementById('hud-room-badge');
+      const hudRoomIcon = document.getElementById('hud-room-icon');
+      if (hudRoomCode) hudRoomCode.textContent = `ROOM ${roomCode}`;
+      if (hudRoomBadge) hudRoomBadge.className = 'bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 backdrop-blur-md';
+      if (hudRoomIcon) hudRoomIcon.className = 'fa-solid fa-tower-broadcast text-emerald-400 text-[10px]';
+
+      const drawerCodeDesc = document.getElementById('drawer-code-description');
+      if (drawerCodeDesc) {
+        drawerCodeDesc.innerHTML = `Students join via the Student Viewer using room code <strong class="text-indigo-300 font-mono">${roomCode}</strong>.`;
+      }
 
       let peerOptions = {
         debug: 1,
@@ -1056,6 +1139,10 @@
         });
 
         teacherPeer.on('connection', (conn) => {
+          if (isStudioMode) {
+            conn.close();
+            return;
+          }
           setupIncomingStudentConnection(conn);
         });
 
@@ -1069,8 +1156,10 @@
         });
 
         teacherPeer.on('disconnected', () => {
-          setSignalingUI('connecting', 'Signal: Reconnecting relay...');
-          try { teacherPeer.reconnect(); } catch (e) {}
+          if (!isStudioMode) {
+            setSignalingUI('connecting', 'Signal: Reconnecting relay...');
+            try { teacherPeer.reconnect(); } catch (e) {}
+          }
         });
       } catch (e) {
         console.warn('WebRTC initialization failed:', e);
@@ -1082,12 +1171,11 @@
 
     function setupIncomingStudentConnection(conn) {
       if (!conn) return;
-
       const peerId = conn.peer;
 
       const sendCatchup = () => {
         try {
-          if (conn.open) {
+          if (conn.open && !isStudioMode) {
             conn.send({
               type: 'TEACHER_HANDSHAKE_ACK',
               roomCode: currentRoomCode,
@@ -1102,12 +1190,18 @@
       };
 
       conn.on('open', () => {
+        if (isStudioMode) {
+          conn.close();
+          return;
+        }
         studentConnections.set(peerId, conn);
         sendCatchup();
       });
 
       conn.on('data', (data) => {
-        handleIncomingStudentMessage(data, conn.peer);
+        if (!isStudioMode) {
+          handleIncomingStudentMessage(data, conn.peer);
+        }
       });
 
       conn.on('close', () => {
@@ -1133,7 +1227,7 @@
     }
 
     function handleIncomingStudentMessage(msg, peerId) {
-      if (!msg) return;
+      if (!msg || isStudioMode) return;
 
       const studentKey = msg.studentId || peerId || ('student-' + Math.random().toString(36).substring(2, 7));
 
@@ -1166,12 +1260,13 @@
           });
           updateStudentsCountUI();
         }
-
         updateStudentGazePosition(studentKey, msg.studentName, msg.lon, msg.lat);
       }
     }
 
     function broadcastTeacherAction(payload) {
+      if (isStudioMode) return;
+
       if (syncChannel) {
         try { syncChannel.postMessage(payload); } catch (e) {}
       }
@@ -1187,7 +1282,7 @@
       if (!syncChannel) return;
       syncChannel.onmessage = (event) => {
         const data = event.data;
-        if (!data || (data.roomCode && data.roomCode !== currentRoomCode)) return;
+        if (!data || (data.roomCode && data.roomCode !== currentRoomCode) || isStudioMode) return;
         if (data.type === 'STUDENT_JOIN' || data.type === 'STUDENT_GAZE') {
           handleIncomingStudentMessage(data, data.studentId);
         }
@@ -1226,6 +1321,10 @@
     }
 
     async function fetchToursFromGoogleDrive() {
+      if (isDriveSyncing) {
+        showFloatingToast('Cloud operation in progress, please wait...');
+        return;
+      }
       updateCloudStatusUI('syncing', 'Syncing Drive...');
       const spinner = document.getElementById('portal-sync-spinner');
       if (spinner) spinner.classList.add('fa-spin');
@@ -1298,6 +1397,7 @@
 
     async function saveTourToGoogleDrive(tour) {
       if (!tour) return;
+      isDriveSyncing = true;
       updateCloudStatusUI('syncing', 'Saving to Drive...');
       showFloatingToast('Syncing tour to Google Drive...');
 
@@ -1330,6 +1430,8 @@
       } catch (err) {
         console.warn('Cloud save deferred:', err);
         updateCloudStatusUI('offline', 'Saved Locally (Drive Offline)');
+      } finally {
+        isDriveSyncing = false;
       }
     }
 
@@ -1552,7 +1654,7 @@
     }
 
     function updateStudentGazePosition(studentKey, studentName, targetLon, targetLat) {
-      if (!studentGazeGroup) return;
+      if (!studentGazeGroup || isStudioMode) return;
 
       let item = studentGazeMeshes.get(studentKey);
 
@@ -1590,40 +1692,26 @@
     }
 
     function updateStudentsCountUI() {
-      const hudEl = document.getElementById('hud-students-count');
-      const hudBadge = document.getElementById('hud-students-badge');
-      const drawerEl = document.getElementById('drawer-students-count');
-      const listEl = document.getElementById('drawer-students-list');
-
-      if (isStudioMode) {
-        if (hudEl) hudEl.textContent = 'Broadcast Off';
-        if (hudBadge) {
-          hudBadge.className = 'bg-slate-900/90 border border-slate-800 text-slate-500 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md';
-        }
-        if (drawerEl) drawerEl.textContent = 'Offline (Studio)';
-        if (listEl) {
-          listEl.innerHTML = `<span class="text-[11px] text-amber-400/90 italic"><i class="fa-solid fa-lock text-[10px] mr-1"></i>Broadcasting is paused while editing in Tour Studio.</span>`;
-        }
-        return;
-      }
-
       const count = connectedStudents.size;
-      const countText = `${count} ${count === 1 ? 'Student' : 'Students'}`;
+      const countText = isStudioMode ? 'Broadcast Off' : `${count} ${count === 1 ? 'Student' : 'Students'}`;
 
+      const hudEl = document.getElementById('hud-students-count');
       if (hudEl) hudEl.textContent = countText;
-      if (hudBadge) {
-        hudBadge.className = 'bg-slate-900/90 border border-slate-700/80 text-slate-300 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md';
-      }
-      if (drawerEl) drawerEl.textContent = `${count} Active`;
+
+      const drawerEl = document.getElementById('drawer-students-count');
+      if (drawerEl) drawerEl.textContent = isStudioMode ? 'Offline (Private)' : `${count} Active`;
 
       studentGazeMeshes.forEach((_, key) => {
-        if (!connectedStudents.has(key)) {
+        if (!connectedStudents.has(key) || isStudioMode) {
           removeStudentGaze(key);
         }
       });
 
+      const listEl = document.getElementById('drawer-students-list');
       if (listEl) {
-        if (count === 0) {
+        if (isStudioMode) {
+          listEl.innerHTML = `<span class="text-[11px] text-amber-400 italic">Broadcasting disabled while in Studio Mode</span>`;
+        } else if (count === 0) {
           listEl.innerHTML = `<span class="text-[11px] text-slate-500 italic">No students currently connected</span>`;
         } else {
           listEl.innerHTML = '';
@@ -1799,6 +1887,9 @@
       if (!currentScene || !currentScene.hotspots) return;
       pendingDeleteAction = () => {
         currentScene.hotspots = currentScene.hotspots.filter(item => item.id !== h.id);
+        if (currentTour && currentTour.scenes && currentTour.scenes[currentSceneIndex]) {
+          currentTour.scenes[currentSceneIndex].hotspots = currentScene.hotspots;
+        }
         saveToursToStorage(true);
         renderHotspots(currentScene.hotspots);
         renderDrawerTargetsList(currentScene.hotspots);
@@ -1958,7 +2049,6 @@
         if (btnCreateTop) btnCreateTop.classList.remove('hidden');
         if (libraryHeading) libraryHeading.textContent = 'Expeditions in Studio';
 
-        // Cease all broadcasting and disconnect students when entering Studio
         stopTeacherBroadcast();
       } else {
         tabDelivery.className = 'px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-indigo-600 text-white shadow-md shadow-indigo-600/30';
@@ -2021,7 +2111,7 @@
         const actionLabel = isStudioMode ? 'Edit in Studio' : 'Deliver Tour';
 
         const offlineButtonMarkup = isOffline ? `
-          <button class="btn-remove-offline text-emerald-400 bg-emerald-950/80 border border-emerald-500/30 hover:bg-rose-950 hover:text-rose-300 hover:border-rose-500/30 px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1.5 transition active:scale-95" title="Downloaded to iPad. Click to remove download.">
+          <button class="btn-remove-offline text-emerald-400 bg-emerald-950/80 border border-emerald-500/30 hover:bg-rose-950 hover:text-rose-300 hover:border-rose-500/30 px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1.5 transition active:scale-95" title="Downloaded to device. Click to remove.">
             <i class="fa-solid fa-circle-check text-emerald-400"></i>
             <span>Offline Ready</span>
           </button>
@@ -2124,23 +2214,11 @@
       document.getElementById('view-portal').classList.add('hidden');
       document.getElementById('view-hud').classList.remove('hidden');
 
+      activateScreenKeepAwake();
+
       document.getElementById('hud-tour-title').textContent = tour.title;
       document.getElementById('hud-mode-label').textContent = isStudioMode ? 'Studio Mode' : 'Presenter Mode';
-
-      const hudRoomBadge = document.getElementById('hud-room-badge');
-      const hudRoomIcon = document.getElementById('hud-room-icon');
-      const hudRoomCode = document.getElementById('hud-room-code');
-
-      if (isStudioMode) {
-        if (hudRoomBadge) hudRoomBadge.className = 'bg-amber-950/80 border border-amber-500/40 text-amber-300 px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 backdrop-blur-md';
-        if (hudRoomIcon) hudRoomIcon.className = 'fa-solid fa-eye-slash text-amber-400 text-[10px]';
-        if (hudRoomCode) hudRoomCode.textContent = 'STUDIO (OFFLINE)';
-      } else {
-        if (hudRoomBadge) hudRoomBadge.className = 'bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 backdrop-blur-md';
-        if (hudRoomIcon) hudRoomIcon.className = 'fa-solid fa-tower-broadcast text-emerald-400 text-[10px]';
-        if (hudRoomCode) hudRoomCode.textContent = `ROOM ${currentRoomCode}`;
-      }
-
+      document.getElementById('hud-room-code').textContent = isStudioMode ? 'STUDIO (OFFLINE)' : `ROOM ${currentRoomCode}`;
       document.getElementById('drawer-code-bold').textContent = currentRoomCode;
 
       const btnForceSave = document.getElementById('btn-force-save-drive');
@@ -2161,8 +2239,6 @@
         if (btnStudioEditScene) btnStudioEditScene.classList.remove('hidden');
         if (btnDrawerDeleteScene) btnDrawerDeleteScene.classList.remove('hidden');
         if (btnDrawerEditScene) btnDrawerEditScene.classList.remove('hidden');
-
-        // Ensure broadcasting is completely shut down in Studio
         stopTeacherBroadcast();
       } else {
         btnForceSave.classList.add('hidden');
@@ -2189,6 +2265,48 @@
 
       if (currentScene) {
         loadScene(currentScene, !isStudioMode);
+      }
+    }
+
+    /* ---------------------------------------------------------
+       Deletion Handlers (Tours & Scenes)
+       --------------------------------------------------------- */
+    function promptDeleteTour(tour) {
+      if (!tour) return;
+      pendingDeleteAction = () => executeDeleteTour(tour);
+      document.getElementById('delete-modal-title').textContent = 'Delete Expedition?';
+      document.getElementById('delete-modal-desc').textContent = `Are you sure you want to permanently delete "${tour.title}"? This will remove all scenes and targets.`;
+      document.getElementById('btn-confirm-delete-text').textContent = 'Delete Tour';
+      document.getElementById('delete-confirm-modal').classList.remove('hidden');
+    }
+
+    async function executeDeleteTour(tour) {
+      allTours = allTours.filter(t => t.id !== tour.id);
+      saveToursToStorage(false);
+
+      showFloatingToast(`Deleted tour "${tour.title}"`);
+
+      if (currentTour && currentTour.id === tour.id) {
+        currentTour = null;
+        currentScene = null;
+        exitToPortal();
+      } else {
+        renderToursGrid();
+      }
+
+      try {
+        await fetch(DRIVE_API_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'DELETE_TOUR',
+            tourId: tour.id,
+            tourTitle: tour.title
+          }),
+          mode: 'cors'
+        });
+      } catch (err) {
+        console.warn('Backend tour deletion failed or deferred:', err);
       }
     }
 
@@ -2225,6 +2343,23 @@
 
       showFloatingToast(`Deleted "${deletedTitle}"`);
       loadScene(currentScene, !isStudioMode);
+    }
+
+    function openEditSceneModal() {
+      if (!currentScene) return;
+      isEditingExistingScene = true;
+
+      document.getElementById('modal-scene-heading').textContent = 'Edit 360° Scene Details';
+      document.getElementById('btn-submit-scene-text').textContent = 'Update Scene';
+      document.getElementById('input-scene-title').value = currentScene.title || '';
+      document.getElementById('input-scene-script').value = currentScene.script || '';
+      document.getElementById('input-scene-url').value = (currentScene.panorama && currentScene.panorama.startsWith('http')) ? currentScene.panorama : '';
+      stagedPanoBase64 = (currentScene.panorama && currentScene.panorama.startsWith('data:image/')) ? currentScene.panorama : null;
+
+      const optStatus = document.getElementById('pano-opt-status');
+      if (optStatus) optStatus.classList.add('hidden');
+
+      document.getElementById('add-scene-modal').classList.remove('hidden');
     }
 
     function switchLiveTour(newTour) {
@@ -2320,10 +2455,9 @@
 
       renderHotspots(sceneData.hotspots || []);
       renderDrawerTargetsList(sceneData.hotspots || []);
-
       clearImpromptuSpotlight(false);
 
-      if (broadcast) {
+      if (broadcast && !isStudioMode) {
         broadcastTeacherAction({
           type: 'TEACHER_CHANGE_SCENE',
           roomCode: currentRoomCode,
@@ -2396,20 +2530,40 @@
           enterExpeditionWorkspace(defaultTour);
         }
       };
-      document.getElementById('portal-btn-sync-cloud').onclick = () => {
-        // Prevent downloading old cloud data if a save is in progress or unsaved changes exist
-        if (document.getElementById('portal-cloud-status')?.textContent?.includes('Saving')) {
-          showFloatingToast('Cloud save still in progress. Please wait a moment...');
-          return;
-        }
-        fetchToursFromGoogleDrive();
-      };
+
+      btnCreateTop.onclick = () => openCreateTourModal();
+
+      searchInput.addEventListener('input', () => {
+        renderToursGrid();
+      });
+
+      document.getElementById('portal-btn-sync-cloud').onclick = () => fetchToursFromGoogleDrive();
       document.getElementById('btn-back-portal').onclick = () => exitToPortal();
 
       // Drawer
       const drawer = document.getElementById('script-drawer');
       document.getElementById('btn-toggle-drawer').onclick = () => drawer.classList.toggle('translate-x-full');
       document.getElementById('btn-close-drawer').onclick = () => drawer.classList.add('translate-x-full');
+
+      // Edit Scene Handlers
+      const btnStudioEdit = document.getElementById('btn-studio-edit-scene');
+      const btnDrawerEdit = document.getElementById('btn-drawer-edit-scene');
+      if (btnStudioEdit) btnStudioEdit.onclick = () => openEditSceneModal();
+      if (btnDrawerEdit) btnDrawerEdit.onclick = () => openEditSceneModal();
+
+      // Delete Scene Handlers
+      const btnStudioDelScene = document.getElementById('btn-studio-delete-scene');
+      const btnDrawerDelScene = document.getElementById('btn-drawer-delete-scene');
+      if (btnStudioDelScene) btnStudioDelScene.onclick = () => promptDeleteCurrentScene();
+      if (btnDrawerDelScene) btnDrawerDelScene.onclick = () => promptDeleteCurrentScene();
+
+      // Delete Tour Handler
+      const btnStudioDelTour = document.getElementById('btn-studio-delete-tour');
+      if (btnStudioDelTour) {
+        btnStudioDelTour.onclick = () => {
+          if (currentTour) promptDeleteTour(currentTour);
+        };
+      }
 
       // Font Size Adjuster in Teaching Guide Drawer
       const FONT_SCALES = [85, 100, 115, 130, 150];
@@ -2435,74 +2589,29 @@
       }
 
       const btnFontDec = document.getElementById('btn-font-decrease');
-      const btnFontReset = document.getElementById('btn-font-reset');
       const btnFontInc = document.getElementById('btn-font-increase');
+      const btnFontReset = document.getElementById('btn-font-reset');
 
       if (btnFontDec) {
         btnFontDec.onclick = () => {
-          const idx = FONT_SCALES.indexOf(currentFontScale);
-          if (idx > 0) applyDrawerFontScale(FONT_SCALES[idx - 1]);
+          const currentIdx = FONT_SCALES.indexOf(currentFontScale);
+          if (currentIdx > 0) {
+            applyDrawerFontScale(FONT_SCALES[currentIdx - 1]);
+          }
+        };
+      }
+      if (btnFontInc) {
+        btnFontInc.onclick = () => {
+          const currentIdx = FONT_SCALES.indexOf(currentFontScale);
+          if (currentIdx < FONT_SCALES.length - 1) {
+            applyDrawerFontScale(FONT_SCALES[currentIdx + 1]);
+          }
         };
       }
       if (btnFontReset) {
         btnFontReset.onclick = () => applyDrawerFontScale(100);
       }
-      if (btnFontInc) {
-        btnFontInc.onclick = () => {
-          const idx = FONT_SCALES.indexOf(currentFontScale);
-          if (idx < FONT_SCALES.length - 1) applyDrawerFontScale(FONT_SCALES[idx + 1]);
-        };
-      }
       applyDrawerFontScale(currentFontScale);
-
-      // Studio Deletion Button Handlers
-      const btnStudioDeleteTour = document.getElementById('btn-studio-delete-tour');
-      if (btnStudioDeleteTour) {
-        btnStudioDeleteTour.onclick = () => {
-          if (currentTour) promptDeleteTour(currentTour);
-        };
-      }
-
-      const btnStudioDeleteScene = document.getElementById('btn-studio-delete-scene');
-      if (btnStudioDeleteScene) {
-        btnStudioDeleteScene.onclick = () => promptDeleteCurrentScene();
-      }
-
-      const btnStudioEditScene = document.getElementById('btn-studio-edit-scene');
-      if (btnStudioEditScene) {
-        btnStudioEditScene.onclick = () => openEditSceneModal();
-      }
-
-      const btnDrawerEditScene = document.getElementById('btn-drawer-edit-scene');
-      if (btnDrawerEditScene) {
-        btnDrawerEditScene.onclick = () => openEditSceneModal();
-      }
-
-      const btnDrawerDeleteScene = document.getElementById('btn-drawer-delete-scene');
-      if (btnDrawerDeleteScene) {
-        btnDrawerDeleteScene.onclick = () => promptDeleteCurrentScene();
-      }
-
-      const btnCancelDelete = document.getElementById('btn-cancel-delete');
-      const btnConfirmDelete = document.getElementById('btn-confirm-delete');
-      const deleteModal = document.getElementById('delete-confirm-modal');
-
-      if (btnCancelDelete && deleteModal) {
-        btnCancelDelete.onclick = () => {
-          deleteModal.classList.add('hidden');
-          pendingDeleteAction = null;
-        };
-      }
-
-      if (btnConfirmDelete && deleteModal) {
-        btnConfirmDelete.onclick = () => {
-          if (pendingDeleteAction) {
-            pendingDeleteAction();
-          }
-          deleteModal.classList.add('hidden');
-          pendingDeleteAction = null;
-        };
-      }
 
       // Network Settings Modal Interactions
       const btnToggleNet = document.getElementById('btn-toggle-network-settings');
@@ -2561,7 +2670,7 @@
           modalNet.classList.add('hidden');
           showFloatingToast(`Network mode set to: ${networkConfig.mode === 'local' ? 'Offline LAN' : 'Cloud Mesh'}`);
 
-          if (teacherPeer) {
+          if (teacherPeer && !isStudioMode) {
             initTeacherPeerServer(currentRoomCode);
           }
         };
@@ -2639,6 +2748,7 @@
 
       document.getElementById('btn-clear-impromptu').onclick = () => clearImpromptuSpotlight(true);
 
+      // Force Save
       const btnForceSave = document.getElementById('btn-force-save-drive');
       btnForceSave.onclick = () => {
         if (currentTour) saveTourToGoogleDrive(currentTour);
@@ -2722,6 +2832,9 @@
 
         document.getElementById('create-tour-modal').classList.add('hidden');
 
+        isEditingExistingScene = false;
+        document.getElementById('modal-scene-heading').textContent = 'Add 360° Scene to Tour';
+        document.getElementById('btn-submit-scene-text').textContent = 'Save & Load Scene';
         document.getElementById('input-scene-title').value = 'Scene 1: ' + title;
         document.getElementById('input-scene-script').value = '';
         document.getElementById('input-scene-url').value = '';
@@ -2732,57 +2845,16 @@
 
       // Modal: Add Scene
       document.getElementById('btn-studio-add-scene').onclick = () => {
-        editingSceneId = null;
         stagedTourDraft = null;
-        const modalHeading = document.querySelector('#add-scene-modal h3');
-        if (modalHeading) modalHeading.textContent = 'Add 360° Scene to Tour';
-        const submitBtnText = document.querySelector('#btn-submit-scene span');
-        if (submitBtnText) submitBtnText.textContent = 'Save & Load Scene';
-
+        isEditingExistingScene = false;
+        document.getElementById('modal-scene-heading').textContent = 'Add 360° Scene to Tour';
+        document.getElementById('btn-submit-scene-text').textContent = 'Save & Load Scene';
         document.getElementById('input-scene-title').value = '';
         document.getElementById('input-scene-script').value = '';
         document.getElementById('input-scene-url').value = '';
         stagedPanoBase64 = null;
         document.getElementById('pano-opt-status').classList.add('hidden');
         document.getElementById('add-scene-modal').classList.remove('hidden');
-      };
-
-      function openEditSceneModal() {
-        if (!currentScene) return;
-        editingSceneId = currentScene.id;
-        stagedTourDraft = null;
-
-        const modalHeading = document.querySelector('#add-scene-modal h3');
-        if (modalHeading) modalHeading.textContent = 'Edit Scene Details';
-        const submitBtnText = document.querySelector('#btn-submit-scene span');
-        if (submitBtnText) submitBtnText.textContent = 'Update Scene Details';
-
-        document.getElementById('input-scene-title').value = currentScene.title || '';
-        document.getElementById('input-scene-script').value = currentScene.script || '';
-        document.getElementById('input-scene-url').value = (currentScene.panorama && currentScene.panorama.startsWith('http')) ? currentScene.panorama : '';
-        stagedPanoBase64 = (currentScene.panorama && currentScene.panorama.startsWith('data:image/')) ? currentScene.panorama : null;
-
-        const optStatus = document.getElementById('pano-opt-status');
-        if (optStatus) {
-          if (currentScene.panorama) {
-            optStatus.classList.remove('hidden');
-            document.getElementById('pano-opt-label').textContent = 'Existing 360° Panorama Loaded (Replace below if desired)';
-            document.getElementById('pano-opt-savings').textContent = 'Active';
-          } else {
-            optStatus.classList.add('hidden');
-          }
-        }
-
-        document.getElementById('add-scene-modal').classList.remove('hidden');
-      }
-
-      document.getElementById('btn-close-scene-modal').onclick = () => {
-        document.getElementById('add-scene-modal').classList.add('hidden');
-        editingSceneId = null;
-      };
-      document.getElementById('btn-cancel-scene-modal').onclick = () => {
-        document.getElementById('add-scene-modal').classList.add('hidden');
-        editingSceneId = null;
       };
 
       document.getElementById('btn-close-scene-modal').onclick = () => {
@@ -2827,28 +2899,23 @@
         const script = document.getElementById('input-scene-script').value.trim();
         const urlInput = document.getElementById('input-scene-url').value.trim();
 
-        if (editingSceneId && currentTour && currentTour.scenes) {
-          const targetScene = currentTour.scenes.find(s => s.id === editingSceneId);
-          if (targetScene) {
-            targetScene.title = title;
-            targetScene.script = script;
-            if (stagedPanoBase64) {
-              targetScene.panorama = stagedPanoBase64;
-            } else if (urlInput) {
-              targetScene.panorama = urlInput;
-            }
-
-            if (currentSceneIndex === 0 && (!currentTour.cover || currentTour.cover.startsWith('data:image/'))) {
-              currentTour.cover = targetScene.panorama;
-            }
-
-            currentScene = targetScene;
-            saveToursToStorage(true);
-            loadScene(currentScene, false);
-            showFloatingToast(`Updated scene: "${title}"`);
+        if (isEditingExistingScene && currentScene) {
+          currentScene.title = title;
+          currentScene.script = script;
+          if (stagedPanoBase64) {
+            currentScene.panorama = stagedPanoBase64;
+          } else if (urlInput) {
+            currentScene.panorama = urlInput;
           }
+
+          if (currentTour && currentTour.scenes && currentTour.scenes[currentSceneIndex]) {
+            currentTour.scenes[currentSceneIndex] = currentScene;
+          }
+
+          saveToursToStorage(true);
           document.getElementById('add-scene-modal').classList.add('hidden');
-          editingSceneId = null;
+          showFloatingToast(`Updated "${title}"`);
+          loadScene(currentScene, false);
           return;
         }
 
@@ -3011,17 +3078,7 @@
           return;
         }
 
-        if (!currentScene) {
-          showFloatingToast('No active scene selected.');
-          return;
-        }
-
-        if (!currentScene.hotspots) {
-          currentScene.hotspots = [];
-        }
-
-        if (editingHotspotId) {
-          // UPDATE EXISTING TARGET
+        if (editingHotspotId && currentScene && currentScene.hotspots) {
           const target = currentScene.hotspots.find(h => h.id === editingHotspotId);
           if (target) {
             target.title = title;
@@ -3032,47 +3089,59 @@
               target.theta = THREE.MathUtils.degToRad(lon);
             }
           }
+          if (currentTour && currentTour.scenes && currentTour.scenes[currentSceneIndex]) {
+            currentTour.scenes[currentSceneIndex].hotspots = currentScene.hotspots;
+          }
+          saveToursToStorage(true);
+          renderHotspots(currentScene.hotspots);
+          renderDrawerTargetsList(currentScene.hotspots);
+          document.getElementById('add-hotspot-modal').classList.add('hidden');
           showFloatingToast(`Updated target "${title}".`);
           editingHotspotId = null;
-        } else {
-          // CREATE NEW TARGET
-          const newTarget = {
-            id: 'hotspot-' + Date.now(),
-            title: title,
-            text: text,
-            image: finalImage,
-            phi: targetHotspotPhi,
-            theta: targetHotspotTheta
-          };
+          return;
+        }
+
+        const newTarget = {
+          id: 'hotspot-' + Date.now(),
+          title: title,
+          text: text,
+          image: finalImage,
+          phi: targetHotspotPhi,
+          theta: targetHotspotTheta
+        };
+
+        if (currentScene) {
+          if (!currentScene.hotspots) currentScene.hotspots = [];
           currentScene.hotspots.push(newTarget);
-          showFloatingToast(`Target "${title}" added to scene.`);
-        }
-
-        // CRITICAL FIX: Explicitly bind the scene back to the tour object and library
-        if (currentTour && currentTour.scenes) {
-          currentTour.scenes[currentSceneIndex] = currentScene;
-          const tourIdx = allTours.findIndex(t => t.id === currentTour.id);
-          if (tourIdx >= 0) {
-            allTours[tourIdx] = currentTour;
+          if (currentTour && currentTour.scenes && currentTour.scenes[currentSceneIndex]) {
+            currentTour.scenes[currentSceneIndex].hotspots = currentScene.hotspots;
           }
+          saveToursToStorage(true);
+          renderHotspots(currentScene.hotspots);
+          renderDrawerTargetsList(currentScene.hotspots);
         }
-
-        // Immediately persist locally and auto-sync to Drive
-        saveToursToStorage(true);
-        renderHotspots(currentScene.hotspots);
-        renderDrawerTargetsList(currentScene.hotspots);
 
         document.getElementById('add-hotspot-modal').classList.add('hidden');
+        showFloatingToast(`Target "${title}" added to scene.`);
       };
 
-      document.getElementById('btn-drawer-sync-drive').onclick = () => {
-        if (currentTour) {
-          // Commit current scene state to tour before pushing to Drive
-          if (currentScene && currentTour.scenes) {
-            currentTour.scenes[currentSceneIndex] = currentScene;
-          }
-          saveTourToGoogleDrive(currentTour);
+      // Modal: Generic Delete
+      document.getElementById('btn-cancel-delete').onclick = () => {
+        document.getElementById('delete-confirm-modal').classList.add('hidden');
+        pendingDeleteAction = null;
+      };
+
+      document.getElementById('btn-confirm-delete').onclick = () => {
+        if (pendingDeleteAction) {
+          pendingDeleteAction();
+          pendingDeleteAction = null;
         }
+        document.getElementById('delete-confirm-modal').classList.add('hidden');
+      };
+
+      // Drawer force sync
+      document.getElementById('btn-drawer-sync-drive').onclick = () => {
+        if (currentTour) saveTourToGoogleDrive(currentTour);
       };
 
       const btnDismissFocus = document.getElementById('btn-broadcast-spotlight-clear');
@@ -3106,17 +3175,6 @@
     }
 
     /* ---------------------------------------------------------
-       Service Worker Registration for Offline PWA Support
-       --------------------------------------------------------- */
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then((reg) => console.log('Teacher PWA ServiceWorker active:', reg.scope))
-          .catch((err) => console.warn('ServiceWorker registration deferred:', err));
-      });
-    }
-
-    /* ---------------------------------------------------------
        Lifecycle Startup
        --------------------------------------------------------- */
     window.addEventListener('DOMContentLoaded', () => {
@@ -3124,6 +3182,15 @@
       initToursState();
       setupUIHandlers();
       setPortalMode(false);
+      attachUserInteractionWakeLock();
+
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('sw.js')
+            .then((reg) => console.log('[PWA] Service Worker registered with scope:', reg.scope))
+            .catch((err) => console.warn('[PWA] Service Worker registration failed:', err));
+        });
+      }
     });
   </script>
 </body>
