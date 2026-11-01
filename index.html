@@ -1133,18 +1133,18 @@
       clearTimeout(connectionTimeoutTimer);
 
       requestScreenWakeLock();
-      const screenJoin = document.getElementById('screen-join');
-      const screenHud = document.getElementById('screen-hud');
-      if (screenJoin) screenJoin.classList.add('hidden');
+      screenJoin.classList.add('hidden');
       if (screenHud) screenHud.classList.remove('hidden');
       safeSetText('hud-room-code', `ROOM ${currentRoomCode}`);
 
       clearInterval(heartbeatInterval);
-      heartbeatInterval = setInterval(sendHeartbeat, 3000);
+      // Relaxed heartbeat to prevent flooding the teacher socket
+      heartbeatInterval = setInterval(sendHeartbeat, 8000);
       sendHeartbeat();
 
       clearInterval(gazeBroadcastInterval);
-      gazeBroadcastInterval = setInterval(sendGazeTelemetry, 66);
+      // Reduced broadcast frequency from 66ms (15Hz) to 125ms (8Hz) for smoother mesh throughput
+      gazeBroadcastInterval = setInterval(sendGazeTelemetry, 125);
 
       showStudentToast(`Connected to Room ${currentRoomCode}!`);
     }
@@ -1171,7 +1171,8 @@
       const roundedLon = Math.round(lon * 10) / 10;
       const roundedLat = Math.round(lat * 10) / 10;
 
-      if (lastSentLon !== null && Math.abs(roundedLon - lastSentLon) < 0.2 && Math.abs(roundedLat - lastSentLat) < 0.2) {
+      // Deadband filter: Only transmit if rotation angle shifted by more than 1.2 degrees
+      if (lastSentLon !== null && Math.abs(roundedLon - lastSentLon) < 1.2 && Math.abs(roundedLat - lastSentLat) < 1.2) {
         return;
       }
 
