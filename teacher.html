@@ -1238,20 +1238,6 @@
           lastSeen: Date.now()
         });
         updateStudentsCountUI();
-
-        const targetConn = studentConnections.get(peerId);
-        if (targetConn && targetConn.open) {
-          try {
-            targetConn.send({
-              type: 'TEACHER_HANDSHAKE_ACK',
-              roomCode: currentRoomCode,
-              studentId: studentKey,
-              tour: currentTour,
-              scene: currentScene,
-              sceneIndex: currentSceneIndex
-            });
-          } catch (e) {}
-        }
       } else if (msg.type === 'STUDENT_GAZE') {
         if (!connectedStudents.has(studentKey)) {
           connectedStudents.set(studentKey, {
@@ -1271,9 +1257,14 @@
         try { syncChannel.postMessage(payload); } catch (e) {}
       }
 
+      // Fast synchronous broadcast across open data channels
       studentConnections.forEach((conn) => {
         if (conn && conn.open) {
-          try { conn.send(payload); } catch (err) {}
+          try { 
+            conn.send(payload); 
+          } catch (err) {
+            console.warn('Failed packet transmission to peer:', conn.peer, err);
+          }
         }
       });
     }
