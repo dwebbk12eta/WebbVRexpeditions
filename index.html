@@ -448,6 +448,10 @@
     let lastSentLon = null, lastSentLat = null;
     let localBroadcastChannel = null;
 
+    // DOM Screen Elements Cache
+    let elScreenJoin = null;
+    let elScreenHud = null;
+
     try {
       if (typeof BroadcastChannel !== 'undefined') {
         localBroadcastChannel = new BroadcastChannel('expeditions-classroom-sync');
@@ -854,7 +858,13 @@
             }
           },
           undefined,
-          () => {}
+          (err) => {
+            console.warn('Panorama image failed to load, falling back to procedural sky:', err);
+            if (sphereMesh && sphereMesh.material) {
+              sphereMesh.material.map = createProceduralPanoTexture();
+              sphereMesh.material.needsUpdate = true;
+            }
+          }
         );
       }
 
@@ -1133,9 +1143,20 @@
       clearTimeout(connectionTimeoutTimer);
 
       requestScreenWakeLock();
-      screenJoin.classList.add('hidden');
-      if (screenHud) screenHud.classList.remove('hidden');
+
+      // Safely transition DOM screens using explicit elements
+      const joinScreen = elScreenJoin || document.getElementById('screen-join');
+      const hudScreen = elScreenHud || document.getElementById('screen-hud');
+
+      if (joinScreen) joinScreen.classList.add('hidden');
+      if (hudScreen) hudScreen.classList.remove('hidden');
+
       safeSetText('hud-room-code', `ROOM ${currentRoomCode}`);
+
+      // If no scene has been received from the teacher yet, load the default starter scene
+      if (!currentScene) {
+        loadScene(DEFAULT_PRESET_TOUR.scenes[0]);
+      }
 
       clearInterval(heartbeatInterval);
       // Relaxed heartbeat to prevent flooding the teacher socket
@@ -1474,6 +1495,8 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+      elScreenJoin = document.getElementById('screen-join');
+      elScreenHud = document.getElementById('screen-hud');
       initThreeEngine();
       setupDOMHandlers();
     });
