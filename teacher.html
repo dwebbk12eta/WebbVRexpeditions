@@ -244,10 +244,11 @@
           <span class="hidden md:inline">Delete Tour</span>
         </button>
 
-        <div id="hud-mode-pill" class="bg-purple-950/80 border border-purple-500/40 text-purple-300 px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 backdrop-blur-md">
-          <i class="fa-solid fa-chalkboard-user text-[11px]"></i>
-          <span id="hud-mode-label">Presenter Mode</span>
-        </div>
+        <!-- Interactive Mode Toggle Pill inside HUD -->
+        <button id="hud-mode-pill" class="bg-purple-950/80 hover:bg-purple-900/80 border border-purple-500/40 text-purple-300 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 backdrop-blur-md transition active:scale-95 cursor-pointer" title="Click to toggle between Studio and Presenter mode">
+          <i class="fa-solid fa-wand-magic-sparkles text-[11px]" id="hud-mode-icon"></i>
+          <span id="hud-mode-label">Tour Studio</span>
+        </button>
 
         <button id="btn-studio-add-scene" class="hidden bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow-md shadow-indigo-600/30 backdrop-blur-md">
           <i class="fa-solid fa-plus text-[10px]"></i>
@@ -2213,11 +2214,21 @@
       document.getElementById('view-hud').classList.remove('hidden');
 
       activateScreenKeepAwake();
+      syncWorkspaceModeUI();
 
-      document.getElementById('hud-tour-title').textContent = tour.title;
-      document.getElementById('hud-mode-label').textContent = isStudioMode ? 'Studio Mode' : 'Presenter Mode';
-      document.getElementById('hud-room-code').textContent = isStudioMode ? 'STUDIO (OFFLINE)' : `ROOM ${currentRoomCode}`;
-      document.getElementById('drawer-code-bold').textContent = currentRoomCode;
+      if (currentScene) {
+        loadScene(currentScene, !isStudioMode);
+      }
+    }
+
+    /* Synchronizes all buttons, HUD pills, and broadcast channels with the active mode */
+    function syncWorkspaceModeUI() {
+      if (!currentTour) return;
+
+      document.getElementById('hud-tour-title').textContent = currentTour.title;
+      const modeLabel = document.getElementById('hud-mode-label');
+      const modeIcon = document.getElementById('hud-mode-icon');
+      const modePill = document.getElementById('hud-mode-pill');
 
       const btnForceSave = document.getElementById('btn-force-save-drive');
       const btnStudioAdd = document.getElementById('btn-studio-add-scene');
@@ -2228,8 +2239,14 @@
       const btnDrawerDeleteScene = document.getElementById('btn-drawer-delete-scene');
       const btnDrawerEditScene = document.getElementById('btn-drawer-edit-scene');
       const btnDrawerAddTarget = document.getElementById('btn-drawer-add-target');
+      const interactionHint = document.getElementById('hud-interaction-hint');
 
       if (isStudioMode) {
+        // --- STUDIO / AUTHORING MODE ---
+        if (modeLabel) modeLabel.textContent = 'Tour Studio';
+        if (modeIcon) modeIcon.className = 'fa-solid fa-wand-magic-sparkles text-[11px]';
+        if (modePill) modePill.className = 'bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-purple-300 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 backdrop-blur-md cursor-pointer transition';
+
         btnForceSave.classList.remove('hidden');
         btnStudioAdd.classList.remove('hidden');
         btnStudioDrop.classList.remove('hidden');
@@ -2239,8 +2256,18 @@
         if (btnDrawerDeleteScene) btnDrawerDeleteScene.classList.remove('hidden');
         if (btnDrawerEditScene) btnDrawerEditScene.classList.remove('hidden');
         if (btnDrawerAddTarget) btnDrawerAddTarget.classList.remove('hidden');
+
+        if (interactionHint) {
+          interactionHint.textContent = 'Aim crosshair at any landmark and click "Add Target Here" to place a curriculum marker';
+        }
+
         stopTeacherBroadcast();
       } else {
+        // --- PRESENTER / DELIVERY MODE ---
+        if (modeLabel) modeLabel.textContent = 'Tour Delivery';
+        if (modeIcon) modeIcon.className = 'fa-solid fa-chalkboard-user text-[11px]';
+        if (modePill) modePill.className = 'bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-300 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 backdrop-blur-md cursor-pointer transition';
+
         btnForceSave.classList.add('hidden');
         btnStudioAdd.classList.add('hidden');
         btnStudioDrop.classList.add('hidden');
@@ -2251,21 +2278,16 @@
         if (btnDrawerEditScene) btnDrawerEditScene.classList.add('hidden');
         if (btnDrawerAddTarget) btnDrawerAddTarget.classList.add('hidden');
 
-        if (!teacherPeer || teacherPeer.destroyed) {
-          initTeacherPeerServer(currentRoomCode);
-        } else {
-          broadcastTeacherAction({
-            type: 'TEACHER_CHANGE_TOUR',
-            roomCode: currentRoomCode,
-            tour: currentTour,
-            scene: currentScene,
-            sceneIndex: 0
-          });
+        if (interactionHint) {
+          interactionHint.textContent = 'Double-click anywhere to spotlight a focal point for students';
         }
+
+        initTeacherPeerServer(currentRoomCode);
       }
 
+      // Re-render targets list to refresh edit/delete buttons vs delivery spotlight buttons
       if (currentScene) {
-        loadScene(currentScene, !isStudioMode);
+        renderDrawerTargetsList(currentScene.hotspots || []);
       }
     }
 
@@ -2545,6 +2567,16 @@
       const drawer = document.getElementById('script-drawer');
       document.getElementById('btn-toggle-drawer').onclick = () => drawer.classList.toggle('translate-x-full');
       document.getElementById('btn-close-drawer').onclick = () => drawer.classList.add('translate-x-full');
+
+      // In-HUD Quick Mode Switcher (Clicking the mode pill toggles Studio <-> Presenter instantly)
+      const hudModePill = document.getElementById('hud-mode-pill');
+      if (hudModePill) {
+        hudModePill.onclick = () => {
+          isStudioMode = !isStudioMode;
+          syncWorkspaceModeUI();
+          showFloatingToast(`Switched to: ${isStudioMode ? 'Tour Studio (Authoring)' : 'Tour Delivery (Live Broadcast)'}`);
+        };
+      }
 
       // Edit Scene Handlers
       const btnStudioEdit = document.getElementById('btn-studio-edit-scene');
