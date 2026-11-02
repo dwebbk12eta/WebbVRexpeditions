@@ -373,7 +373,14 @@
               <i class="fa-solid fa-bullseye text-amber-400 text-xs"></i>
               <span>Scene Targets & Discussion Points</span>
             </h5>
-            <span id="drawer-targets-count" class="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded-full border border-slate-800">0 Points</span>
+            <div class="flex items-center gap-2">
+              <span id="drawer-targets-count" class="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded-full border border-slate-800">0 Points</span>
+              <!-- Added Studio Authoring Button in Drawer -->
+              <button id="btn-drawer-add-target" class="hidden bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] px-2.5 py-1 rounded-lg transition flex items-center gap-1 shadow-sm active:scale-95" title="Add target marker at current view center">
+                <i class="fa-solid fa-plus text-[9px]"></i>
+                <span>Add Target</span>
+              </button>
+            </div>
           </div>
           <div id="drawer-targets-list" class="space-y-2.5"></div>
         </div>
@@ -2220,6 +2227,7 @@
       const btnStudioEditScene = document.getElementById('btn-studio-edit-scene');
       const btnDrawerDeleteScene = document.getElementById('btn-drawer-delete-scene');
       const btnDrawerEditScene = document.getElementById('btn-drawer-edit-scene');
+      const btnDrawerAddTarget = document.getElementById('btn-drawer-add-target');
 
       if (isStudioMode) {
         btnForceSave.classList.remove('hidden');
@@ -2230,6 +2238,7 @@
         if (btnStudioEditScene) btnStudioEditScene.classList.remove('hidden');
         if (btnDrawerDeleteScene) btnDrawerDeleteScene.classList.remove('hidden');
         if (btnDrawerEditScene) btnDrawerEditScene.classList.remove('hidden');
+        if (btnDrawerAddTarget) btnDrawerAddTarget.classList.remove('hidden');
         stopTeacherBroadcast();
       } else {
         btnForceSave.classList.add('hidden');
@@ -2240,6 +2249,7 @@
         if (btnStudioEditScene) btnStudioEditScene.classList.add('hidden');
         if (btnDrawerDeleteScene) btnDrawerDeleteScene.classList.add('hidden');
         if (btnDrawerEditScene) btnDrawerEditScene.classList.add('hidden');
+        if (btnDrawerAddTarget) btnDrawerAddTarget.classList.add('hidden');
 
         if (!teacherPeer || teacherPeer.destroyed) {
           initTeacherPeerServer(currentRoomCode);
@@ -2934,42 +2944,54 @@
 
         saveToursToStorage(true);
         document.getElementById('add-scene-modal').classList.add('hidden');
-        enterExpeditionWorkspace(currentTour);
-        loadScene(currentTour.scenes[currentSceneIndex], false);
-      };
+      enterExpeditionWorkspace(currentTour);
+      loadScene(currentTour.scenes[currentSceneIndex], false);
+    };
 
-      // Modal: Hotspot Placement
-      document.getElementById('btn-studio-drop-target').onclick = () => {
-        editingHotspotId = null;
-        targetHotspotPhi = THREE.MathUtils.degToRad(90 - lat);
-        targetHotspotTheta = THREE.MathUtils.degToRad(lon);
+    // Shared Helper to Open Add Hotspot Modal at Current Camera Center
+    function openAddHotspotModalAtCurrentView() {
+      editingHotspotId = null;
+      targetHotspotPhi = THREE.MathUtils.degToRad(90 - lat);
+      targetHotspotTheta = THREE.MathUtils.degToRad(lon);
 
-        document.getElementById('modal-hotspot-heading').textContent = 'Add Curriculum Target Marker';
-        document.getElementById('btn-save-hotspot-text').textContent = 'Save Target Marker';
-        document.getElementById('input-hotspot-title').value = '';
-        document.getElementById('input-hotspot-text').value = '';
-        document.getElementById('input-hotspot-image-url').value = '';
-        stagedHotspotImageBase64 = null;
+      document.getElementById('modal-hotspot-heading').textContent = 'Add Curriculum Target Marker';
+      document.getElementById('btn-save-hotspot-text').textContent = 'Save Target Marker';
+      document.getElementById('input-hotspot-title').value = '';
+      document.getElementById('input-hotspot-text').value = '';
+      document.getElementById('input-hotspot-image-url').value = '';
+      stagedHotspotImageBase64 = null;
 
-        const repoBox = document.getElementById('hotspot-reposition-box');
-        if (repoBox) repoBox.classList.add('hidden');
-        const posHint = document.getElementById('hotspot-pos-hint-text');
-        if (posHint) posHint.textContent = 'Marker positioned at current crosshair camera center.';
+      const repoBox = document.getElementById('hotspot-reposition-box');
+      if (repoBox) repoBox.classList.add('hidden');
+      const posHint = document.getElementById('hotspot-pos-hint-text');
+      if (posHint) posHint.textContent = 'Marker positioned at current crosshair camera center.';
 
-        const previewBox = document.getElementById('hotspot-img-preview-box');
-        const previewImg = document.getElementById('hotspot-img-preview');
-        const uploadPrompt = document.getElementById('hotspot-img-upload-prompt');
-        const btnClearImg = document.getElementById('btn-clear-hotspot-img');
+      const previewBox = document.getElementById('hotspot-img-preview-box');
+      const previewImg = document.getElementById('hotspot-img-preview');
+      const uploadPrompt = document.getElementById('hotspot-img-upload-prompt');
+      const btnClearImg = document.getElementById('btn-clear-hotspot-img');
 
-        if (previewBox) previewBox.classList.add('hidden');
-        if (previewImg) previewImg.src = '';
-        if (uploadPrompt) uploadPrompt.classList.remove('hidden');
-        if (btnClearImg) btnClearImg.classList.add('hidden');
+      if (previewBox) previewBox.classList.add('hidden');
+      if (previewImg) previewImg.src = '';
+      if (uploadPrompt) uploadPrompt.classList.remove('hidden');
+      if (btnClearImg) btnClearImg.classList.add('hidden');
 
-        document.getElementById('add-hotspot-modal').classList.remove('hidden');
-      };
+      document.getElementById('add-hotspot-modal').classList.remove('hidden');
+    }
 
-      document.getElementById('btn-close-hotspot-modal').onclick = () => {
+    // Modal: Hotspot Placement Trigger from Bottom Action Bar
+    const btnStudioDrop = document.getElementById('btn-studio-drop-target');
+    if (btnStudioDrop) {
+      btnStudioDrop.onclick = () => openAddHotspotModalAtCurrentView();
+    }
+
+    // Modal: Hotspot Placement Trigger from Teaching Guide Drawer
+    const btnDrawerAddTarget = document.getElementById('btn-drawer-add-target');
+    if (btnDrawerAddTarget) {
+      btnDrawerAddTarget.onclick = () => openAddHotspotModalAtCurrentView();
+    }
+
+    document.getElementById('btn-close-hotspot-modal').onclick = () => {
         document.getElementById('add-hotspot-modal').classList.add('hidden');
         editingHotspotId = null;
       };
