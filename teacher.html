@@ -1045,6 +1045,8 @@
     /* ---------------------------------------------------------
        WebRTC PeerJS & Broadcast Networking (Teacher Multi-Client Host)
        --------------------------------------------------------- */
+    let peerReconnectTimeout = null;
+
     function setSignalingUI(state, text) {
       const dot = document.getElementById('hud-signal-dot');
       const label = document.getElementById('hud-signal-text');
@@ -1061,6 +1063,7 @@
     }
 
     function stopTeacherBroadcast() {
+      clearTimeout(peerReconnectTimeout);
       if (teacherPeer) {
         try {
           studentConnections.forEach((conn) => {
@@ -1071,6 +1074,7 @@
               } catch (e) {}
             }
           });
+          teacherPeer.disconnect();
           teacherPeer.destroy();
         } catch (e) {}
         teacherPeer = null;
@@ -1099,15 +1103,26 @@
         return;
       }
 
+      clearTimeout(peerReconnectTimeout);
+
+      // If existing peer is active and healthy with the same room ID, don't destroy it
+      const hostPeerId = `teacher-room-${roomCode}`;
+      if (teacherPeer && !teacherPeer.destroyed && !teacherPeer.disconnected && teacherPeer.id === hostPeerId) {
+        setSignalingUI('live', `Signal: Live (${hostPeerId})`);
+        return;
+      }
+
       if (teacherPeer) {
-        try { teacherPeer.destroy(); } catch (e) {}
+        try {
+          teacherPeer.disconnect();
+          teacherPeer.destroy();
+        } catch (e) {}
         teacherPeer = null;
       }
       studentConnections.clear();
       connectedStudents.clear();
       updateStudentsCountUI();
 
-      const hostPeerId = `teacher-room-${roomCode}`;
       setSignalingUI('connecting', `Signal: Registering ${hostPeerId}...`);
 
       const hudRoomCode = document.getElementById('hud-room-code');
@@ -1149,6 +1164,7 @@
         teacherPeer = new Peer(hostPeerId, peerOptions);
 
         teacherPeer.on('open', (id) => {
+          clearTimeout(peerReconnectTimeout);
           setSignalingUI('live', `Signal: Live (${id})`);
           showFloatingToast(`Classroom broadcast ready on Room ${roomCode}`);
         });
@@ -1164,7 +1180,16 @@
         teacherPeer.on('error', (err) => {
           console.warn('Teacher peer error:', err);
           if (err && err.type === 'unavailable-id') {
-            setSignalingUI('live', `Signal: Active on ${hostPeerId}`);
+            // Previous socket lock detected on relay server; purge and force fresh acquisition
+            setSignalingUI('connecting', 'Signal: Clearing stale room lock...');
+            clearTimeout(peerReconnectTimeout);
+            peerReconnectTimeout = setTimeout(() => {
+              if (teacherPeer) {
+                try { teacherPeer.destroy(); } catch (e) {}
+                teacherPeer = null;
+              }
+              initTeacherPeerServer(roomCode);
+            }, 1800);
           } else {
             setSignalingUI('error', `Signal: ${err.type || 'Offline'}`);
           }
@@ -1173,7 +1198,18 @@
         teacherPeer.on('disconnected', () => {
           if (!isStudioMode) {
             setSignalingUI('connecting', 'Signal: Reconnecting relay...');
-            try { teacherPeer.reconnect(); } catch (e) {}
+            clearTimeout(peerReconnectTimeout);
+            peerReconnectTimeout = setTimeout(() => {
+              if (teacherPeer && !teacherPeer.destroyed) {
+                try {
+                  teacherPeer.reconnect();
+                } catch (e) {
+                  initTeacherPeerServer(roomCode);
+                }
+              } else {
+                initTeacherPeerServer(roomCode);
+              }
+            }, 2000);
           }
         });
       } catch (e) {
