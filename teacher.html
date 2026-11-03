@@ -24,6 +24,9 @@
   <!-- Three.js (Core 3D Engine for 360 Panoramas and Hotspots) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
+  <!-- SortableJS (Touch & Mouse Drag-and-Drop Reordering) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+
   <!-- NoSleep.js (Proven iOS / iPadOS Safari Screen Keep-Awake Engine) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/nosleep/0.12.0/NoSleep.min.js"></script>
 
@@ -952,6 +955,10 @@
     let editingHotspotId = null;
     let isEditingExistingScene = false;
 
+    /* Sortable Instances */
+    let drawerSortableInstance = null;
+    let scenePickerSortableInstance = null;
+
     /* iPad Screen Keep-Awake Sentinel */
     let teacherWakeLock = null;
     let noSleepInstance = null;
@@ -1771,6 +1778,12 @@
       countBadge.textContent = `${hotspots.length} Points`;
       container.innerHTML = '';
 
+      // Destroy previous sortable instance if any
+      if (drawerSortableInstance) {
+        drawerSortableInstance.destroy();
+        drawerSortableInstance = null;
+      }
+
       if (hotspots.length === 0) {
         container.innerHTML = `<div class="p-3 text-center text-xs text-slate-500 bg-slate-900 rounded-xl">No target markers added to this scene.</div>`;
         return;
@@ -1778,7 +1791,8 @@
 
       hotspots.forEach((h, idx) => {
         const card = document.createElement('div');
-        card.className = 'bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 rounded-xl p-3 space-y-2.5 transition';
+        card.className = 'target-card bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 rounded-xl p-3 space-y-2.5 transition';
+        card.setAttribute('data-id', h.id);
         
         const imageMarkup = h.image ? `
           <div class="relative w-full h-28 rounded-lg overflow-hidden bg-slate-950 border border-slate-800">
@@ -1786,6 +1800,12 @@
             <span class="absolute top-1.5 right-1.5 bg-slate-950/80 text-[9px] font-bold text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
               <i class="fa-solid fa-image text-[8px] mr-1"></i>Artifact Photo
             </span>
+          </div>
+        ` : '';
+
+        const dragHandleMarkup = isStudioMode ? `
+          <div class="target-drag-handle cursor-grab active:cursor-grabbing text-slate-500 hover:text-amber-400 p-1 mr-0.5" title="Drag to reorder point of interest">
+            <i class="fa-solid fa-grip-vertical text-xs"></i>
           </div>
         ` : '';
 
@@ -1802,10 +1822,11 @@
 
         card.innerHTML = `
           <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-white flex items-center gap-1.5 truncate pr-2">
-              <span class="w-4 h-4 shrink-0 rounded-full bg-amber-500/20 text-amber-400 text-[10px] flex items-center justify-center font-bold">${idx + 1}</span>
-              <span class="truncate">${escapeHtml(h.title)}</span>
-            </span>
+            <div class="flex items-center gap-1.5 truncate pr-2">
+              ${dragHandleMarkup}
+              <span class="target-index-badge w-4 h-4 shrink-0 rounded-full bg-amber-500/20 text-amber-400 text-[10px] flex items-center justify-center font-bold">${idx + 1}</span>
+              <span class="text-xs font-bold text-white truncate">${escapeHtml(h.title)}</span>
+            </div>
             <div class="flex items-center gap-1.5 shrink-0">
               ${studioActions}
               <button class="btn-spotlight-target bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition" data-id="${h.id}">
@@ -1836,107 +1857,32 @@
 
         container.appendChild(card);
       });
-    }
 
-    function openEditHotspotModal(h) {
-      if (!h) return;
-      editingHotspotId = h.id;
+      // Enable drag-and-drop reordering exclusively in Tour Studio mode
+      if (isStudioMode && typeof Sortable !== 'undefined') {
+        drawerSortableInstance = new Sortable(container, {
+          animation: 180,
+          handle: '.target-drag-handle',
+          ghostClass: 'opacity-40',
+          chosenClass: 'scale-[1.02]',
+          onEnd: (evt) => {
+            if (evt.oldIndex === evt.newIndex) return;
+            // Move item in currentScene.hotspots array
+            const [movedItem] = currentScene.hotspots.splice(evt.oldIndex, 1);
+            currentScene.hotspots.splice(evt.newIndex, 0, movedItem);
 
-      const targetLat = 90 - (h.phi * (180 / Math.PI));
-      const targetLon = h.theta * (180 / Math.PI);
-      lon = targetLon;
-      lat = targetLat;
+            // Re-sync with tour object and cloud
+            if (currentTour && currentTour.scenes && currentTour.scenes[currentSceneIndex]) {
+              currentTour.scenes[currentSceneIndex].hotspots = currentScene.hotspots;
+            }
+            saveToursToStorage(true);
 
-      document.getElementById('modal-hotspot-heading').textContent = 'Edit Curriculum Target Marker';
-      document.getElementById('btn-save-hotspot-text').textContent = 'Update Target';
-      document.getElementById('input-hotspot-title').value = h.title || '';
-      document.getElementById('input-hotspot-text').value = h.text || '';
-      document.getElementById('input-hotspot-image-url').value = (h.image && h.image.startsWith('http')) ? h.image : '';
+            // Update badge numbering on all cards in place without full re-render
+            const badges = container.querySelectorAll('.target-index-badge');
+            badges.forEach((b, i) => { b.textContent = i + 1; });
 
-      stagedHotspotImageBase64 = (h.image && h.image.startsWith('data:image/')) ? h.image : null;
-
-      const previewBox = document.getElementById('hotspot-img-preview-box');
-      const previewImg = document.getElementById('hotspot-img-preview');
-      const uploadPrompt = document.getElementById('hotspot-img-upload-prompt');
-      const btnClearImg = document.getElementById('btn-clear-hotspot-img');
-      const repoBox = document.getElementById('hotspot-reposition-box');
-      const chkRepo = document.getElementById('chk-hotspot-reposition');
-      const posHint = document.getElementById('hotspot-pos-hint-text');
-
-      if (repoBox) repoBox.classList.remove('hidden');
-      if (chkRepo) chkRepo.checked = false;
-      if (posHint) posHint.textContent = 'Existing 3D coordinate preserved unless checked above.';
-
-      if (h.image) {
-        if (previewImg) previewImg.src = h.image;
-        if (previewBox) previewBox.classList.remove('hidden');
-        if (uploadPrompt) uploadPrompt.classList.add('hidden');
-        if (btnClearImg) btnClearImg.classList.remove('hidden');
-      } else {
-        if (previewBox) previewBox.classList.add('hidden');
-        if (previewImg) previewImg.src = '';
-        if (uploadPrompt) uploadPrompt.classList.remove('hidden');
-        if (btnClearImg) btnClearImg.classList.add('hidden');
-      }
-
-      document.getElementById('add-hotspot-modal').classList.remove('hidden');
-    }
-
-    function promptDeleteHotspot(h) {
-      if (!currentScene || !currentScene.hotspots) return;
-      pendingDeleteAction = () => {
-        currentScene.hotspots = currentScene.hotspots.filter(item => item.id !== h.id);
-        if (currentTour && currentTour.scenes && currentTour.scenes[currentSceneIndex]) {
-          currentTour.scenes[currentSceneIndex].hotspots = currentScene.hotspots;
-        }
-        saveToursToStorage(true);
-        renderHotspots(currentScene.hotspots);
-        renderDrawerTargetsList(currentScene.hotspots);
-        showFloatingToast(`Deleted target "${h.title}"`);
-      };
-
-      document.getElementById('delete-modal-title').textContent = 'Delete Target Marker?';
-      document.getElementById('delete-modal-desc').textContent = `Are you sure you want to remove "${h.title}" from this scene?`;
-      document.getElementById('btn-confirm-delete-text').textContent = 'Delete Target';
-      document.getElementById('delete-confirm-modal').classList.remove('hidden');
-    }
-
-    function spotlightHotspot(h) {
-      const targetLat = 90 - (h.phi * (180 / Math.PI));
-      const targetLon = h.theta * (180 / Math.PI);
-      lon = targetLon;
-      lat = targetLat;
-
-      showFloatingToast(`Spotlighted: ${h.title}`);
-      const clearBtn = document.getElementById('btn-clear-impromptu');
-      if (clearBtn) clearBtn.classList.remove('hidden');
-
-      broadcastTeacherAction({
-        type: 'TEACHER_SPOTLIGHT',
-        roomCode: currentRoomCode,
-        hotspotId: h.id,
-        title: h.title,
-        text: h.text,
-        image: h.image || null,
-        phi: h.phi,
-        theta: h.theta
-      });
-    }
-
-    function dismissAllSpotlights(broadcast = true) {
-      clearImpromptuSpotlight(false);
-      const clearBtn = document.getElementById('btn-clear-impromptu');
-      if (clearBtn) clearBtn.classList.add('hidden');
-      showFloatingToast('Cleared spotlight focus for all students');
-
-      if (broadcast) {
-        broadcastTeacherAction({
-          type: 'TEACHER_CLEAR_SPOTLIGHT',
-          roomCode: currentRoomCode
-        });
-        broadcastTeacherAction({
-          type: 'TEACHER_CLEAR_IMPROMPTU_PING',
-          roomCode: currentRoomCode
+            showFloatingToast(`Reordered targets`);
+          }
         });
       }
     }
@@ -2802,23 +2748,81 @@
         const grid = document.getElementById('scene-picker-grid');
         grid.innerHTML = '';
 
+        if (scenePickerSortableInstance) {
+          scenePickerSortableInstance.destroy();
+          scenePickerSortableInstance = null;
+        }
+
         currentTour.scenes.forEach((sc, idx) => {
           const item = document.createElement('div');
-          item.className = `p-3 rounded-2xl border transition cursor-pointer flex items-center gap-3 ${idx === currentSceneIndex ? 'bg-indigo-950/80 border-indigo-500' : 'bg-slate-950 border-slate-800 hover:border-slate-700'}`;
+          item.className = `scene-picker-card p-3 rounded-2xl border transition flex items-center justify-between gap-3 ${idx === currentSceneIndex ? 'bg-indigo-950/80 border-indigo-500' : 'bg-slate-950 border-slate-800 hover:border-slate-700'}`;
+          item.setAttribute('data-id', sc.id);
+
+          const dragHandleMarkup = isStudioMode ? `
+            <div class="scene-drag-handle cursor-grab active:cursor-grabbing text-slate-500 hover:text-indigo-400 p-1.5" title="Drag to reorder scene order">
+              <i class="fa-solid fa-grip-vertical text-xs"></i>
+            </div>
+          ` : '';
+
           item.innerHTML = `
-            <span class="w-6 h-6 rounded-lg bg-indigo-600/30 text-indigo-400 font-bold text-xs flex items-center justify-center">${idx + 1}</span>
-            <div class="truncate">
-              <h5 class="text-xs font-bold text-white truncate">${escapeHtml(sc.title)}</h5>
-              <p class="text-[10px] text-slate-400 font-mono">${(sc.hotspots || []).length} Targets</p>
+            <div class="flex items-center gap-2.5 truncate flex-1 cursor-pointer">
+              ${dragHandleMarkup}
+              <span class="scene-idx-badge w-6 h-6 shrink-0 rounded-lg bg-indigo-600/30 text-indigo-400 font-bold text-xs flex items-center justify-center">${idx + 1}</span>
+              <div class="truncate">
+                <h5 class="text-xs font-bold text-white truncate">${escapeHtml(sc.title)}</h5>
+                <p class="text-[10px] text-slate-400 font-mono">${(sc.hotspots || []).length} Targets</p>
+              </div>
             </div>
           `;
-          item.onclick = () => {
-            currentSceneIndex = idx;
-            loadScene(currentTour.scenes[idx], !isStudioMode);
+
+          // Clicking the tile loads that scene
+          item.querySelector('.flex.items-center.gap-2\\.5').onclick = (e) => {
+            if (e.target.closest('.scene-drag-handle')) return;
+            currentSceneIndex = currentTour.scenes.findIndex(s => s.id === sc.id);
+            loadScene(currentTour.scenes[currentSceneIndex], !isStudioMode);
             modal.classList.add('hidden');
           };
+
           grid.appendChild(item);
         });
+
+        // Initialize drag-and-drop reordering for scenes in Studio mode
+        if (isStudioMode && typeof Sortable !== 'undefined') {
+          scenePickerSortableInstance = new Sortable(grid, {
+            animation: 180,
+            handle: '.scene-drag-handle',
+            ghostClass: 'opacity-40',
+            chosenClass: 'scale-[1.02]',
+            onEnd: (evt) => {
+              if (evt.oldIndex === evt.newIndex) return;
+
+              const activeSceneId = currentScene ? currentScene.id : null;
+
+              // Reorder scenes in currentTour
+              const [movedScene] = currentTour.scenes.splice(evt.oldIndex, 1);
+              currentTour.scenes.splice(evt.newIndex, 0, movedScene);
+
+              // Update currentSceneIndex based on the active scene's new position
+              if (activeSceneId) {
+                currentSceneIndex = currentTour.scenes.findIndex(s => s.id === activeSceneId);
+              }
+
+              saveToursToStorage(true);
+
+              // Update badge numbers in the modal grid
+              const badges = grid.querySelectorAll('.scene-idx-badge');
+              badges.forEach((b, i) => { b.textContent = i + 1; });
+
+              // Update bottom bar label
+              const pickerLabel = document.getElementById('btn-scene-picker-label');
+              if (pickerLabel && currentTour.scenes) {
+                pickerLabel.textContent = `Scene ${currentSceneIndex + 1} of ${currentTour.scenes.length}`;
+              }
+
+              showFloatingToast(`Reordered scene sequence`);
+            }
+          });
+        }
 
         modal.classList.remove('hidden');
       };
@@ -3232,7 +3236,21 @@
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('sw.js')
-            .then((reg) => console.log('[PWA] Service Worker registered with scope:', reg.scope))
+            .then((reg) => {
+              console.log('[PWA] Service Worker registered with scope:', reg.scope);
+              // Check for newer GitHub versions on launch
+              reg.update();
+              reg.onupdatefound = () => {
+                const installingWorker = reg.installing;
+                if (!installingWorker) return;
+                installingWorker.onstatechange = () => {
+                  if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    showFloatingToast('New version downloaded! Reloading...');
+                    setTimeout(() => window.location.reload(), 1200);
+                  }
+                };
+              };
+            })
             .catch((err) => console.warn('[PWA] Service Worker registration failed:', err));
         });
       }
