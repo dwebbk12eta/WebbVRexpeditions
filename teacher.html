@@ -1847,44 +1847,109 @@
         if (isStudioMode) {
           const btnEdit = card.querySelector('.btn-edit-target');
           if (btnEdit) {
-            btnEdit.onclick = () => openEditHotspotModal(h);
+            btnEdit.onclick = (e) => {
+              e.stopPropagation();
+              openEditHotspotModal(h);
+            };
           }
           const btnDelete = card.querySelector('.btn-delete-target');
           if (btnDelete) {
-            btnDelete.onclick = () => promptDeleteHotspot(h);
+            btnDelete.onclick = (e) => {
+              e.stopPropagation();
+              promptDeleteHotspot(h);
+            };
           }
         }
 
         container.appendChild(card);
       });
 
-      // Enable drag-and-drop reordering exclusively in Tour Studio mode
+      // Initialize drag-and-drop reordering for hotspot targets in Studio mode
       if (isStudioMode && typeof Sortable !== 'undefined') {
         drawerSortableInstance = new Sortable(container, {
-          animation: 180,
+          animation: 150,
           handle: '.target-drag-handle',
           ghostClass: 'opacity-40',
           chosenClass: 'scale-[1.02]',
           onEnd: (evt) => {
-            if (evt.oldIndex === evt.newIndex) return;
-            // Move item in currentScene.hotspots array
+            if (evt.oldIndex === evt.newIndex || !currentScene || !currentScene.hotspots) return;
+
             const [movedItem] = currentScene.hotspots.splice(evt.oldIndex, 1);
             currentScene.hotspots.splice(evt.newIndex, 0, movedItem);
 
-            // Re-sync with tour object and cloud
             if (currentTour && currentTour.scenes && currentTour.scenes[currentSceneIndex]) {
               currentTour.scenes[currentSceneIndex].hotspots = currentScene.hotspots;
             }
+
             saveToursToStorage(true);
 
             // Update badge numbering on all cards in place without full re-render
             const badges = container.querySelectorAll('.target-index-badge');
             badges.forEach((b, i) => { b.textContent = i + 1; });
 
-            showFloatingToast(`Reordered targets`);
+            showFloatingToast('Reordered targets');
           }
         });
       }
+    }
+
+    function openEditHotspotModal(h) {
+      if (!h) return;
+      editingHotspotId = h.id;
+
+      // Orient camera toward hotspot to give visual context if coordinates exist
+      if (typeof h.phi === 'number' && typeof h.theta === 'number') {
+        const targetLat = 90 - (h.phi * (180 / Math.PI));
+        const targetLon = h.theta * (180 / Math.PI);
+        lon = targetLon;
+        lat = targetLat;
+      }
+
+      const heading = document.getElementById('modal-hotspot-heading');
+      if (heading) heading.textContent = 'Edit Curriculum Target Marker';
+
+      const saveBtnText = document.getElementById('btn-save-hotspot-text');
+      if (saveBtnText) saveBtnText.textContent = 'Update Target';
+
+      const inputTitle = document.getElementById('input-hotspot-title');
+      if (inputTitle) inputTitle.value = h.title || '';
+
+      const inputText = document.getElementById('input-hotspot-text');
+      if (inputText) inputText.value = h.text || '';
+
+      const inputImgUrl = document.getElementById('input-hotspot-image-url');
+      if (inputImgUrl) inputImgUrl.value = (h.image && h.image.startsWith('http')) ? h.image : '';
+
+      stagedHotspotImageBase64 = (h.image && h.image.startsWith('data:image/')) ? h.image : null;
+
+      const previewBox = document.getElementById('hotspot-img-preview-box');
+      const previewImg = document.getElementById('hotspot-img-preview');
+      const uploadPrompt = document.getElementById('hotspot-img-upload-prompt');
+      const btnClearImg = document.getElementById('btn-clear-hotspot-img');
+      const repoBox = document.getElementById('hotspot-reposition-box');
+      const chkRepo = document.getElementById('chk-hotspot-reposition');
+      const posHint = document.getElementById('hotspot-pos-hint');
+
+      if (repoBox) repoBox.classList.remove('hidden');
+      if (chkRepo) chkRepo.checked = false;
+      if (posHint) {
+        posHint.innerHTML = `<i class="fa-solid fa-crosshairs text-indigo-400"></i><span>Existing 3D coordinate preserved unless checked above.</span>`;
+      }
+
+      if (h.image) {
+        if (previewImg) previewImg.src = h.image;
+        if (previewBox) previewBox.classList.remove('hidden');
+        if (uploadPrompt) uploadPrompt.classList.add('hidden');
+        if (btnClearImg) btnClearImg.classList.remove('hidden');
+      } else {
+        if (previewBox) previewBox.classList.add('hidden');
+        if (previewImg) previewImg.src = '';
+        if (uploadPrompt) uploadPrompt.classList.remove('hidden');
+        if (btnClearImg) btnClearImg.classList.add('hidden');
+      }
+
+      const modal = document.getElementById('add-hotspot-modal');
+      if (modal) modal.classList.remove('hidden');
     }
 
     function triggerImpromptuSpotlightAtCameraCenter() {
