@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>360° Panorama Viewer — Smoke Jumper</title>
+
+  <!-- Google Font: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+          },
+          colors: {
+            obsidian: '#0b0d10',
+            ember: {
+              400: '#fb923c',
+              500: '#f97316',
+              600: '#ea580c',
+            },
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Three.js r128 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0b0d10;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+
+    #viewer-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+
+    #viewer-canvas:active {
+      cursor: grabbing;
+    }
+
+    /* Glassmorphic HUD styling */
+    .glass-panel {
+      background: rgba(11, 13, 16, 0.72);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.65);
+    }
+
+    .hud-btn {
+      transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .hud-btn:hover {
+      background: rgba(249, 115, 22, 0.22);
+      border-color: rgba(251, 146, 60, 0.5);
+      color: #ffffff;
+    }
+
+    .hud-btn:active {
+      transform: scale(0.95);
+    }
+
+    .hud-btn.active {
+      background: rgba(249, 115, 22, 0.28);
+      border-color: rgba(251, 146, 60, 0.75);
+      color: #fdba74;
+      box-shadow: 0 0 16px rgba(249, 115, 22, 0.28);
+    }
+
+    @keyframes floatSlow {
+      0%, 100% { transform: translate(-50%, 0px); }
+      50% { transform: translate(-50%, -4px); }
+    }
+    .animate-float {
+      animation: floatSlow 3s ease-in-out infinite;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.04);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.18);
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body class="bg-obsidian text-slate-100 font-sans antialiased">
+
+  <!-- Main WebGL Container -->
+  <div id="viewer-container" class="relative w-full h-full overflow-hidden">
+    <canvas id="viewer-canvas"></canvas>
+
+    <!-- Drag-and-Drop Overlay -->
+    <div id="drop-overlay" class="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-obsidian/80 backdrop-blur-md opacity-0 transition-opacity duration-200">
+      <div class="rounded-2xl border-2 border-dashed border-ember-500/80 bg-obsidian/90 px-8 py-7 text-center shadow-2xl max-w-sm mx-4">
+        <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-ember-500/20 text-ember-400">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+        </div>
+        <p class="text-base font-semibold text-white">Drop Equirectangular 360° Photo</p>
+        <p class="mt-1 text-xs text-slate-400">Supports JPG, PNG, or WebP (2:1 aspect ratio recommended)</p>
+      </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 z-40 flex flex-col items-center justify-center bg-obsidian/90 backdrop-blur-sm transition-opacity duration-300">
+      <div class="relative flex items-center justify-center">
+        <div class="h-12 w-12 rounded-full border-2 border-white/10 border-t-ember-500 animate-spin"></div>
+        <div class="absolute h-2 w-2 rounded-full bg-ember-400"></div>
+      </div>
+      <p id="loading-text" class="mt-4 text-xs font-medium tracking-wider uppercase text-slate-300">Loading 360° Panorama...</p>
+    </div>
+
+    <!-- Top HUD Bar (Hidden in ?ui=minimal) -->
+    <div id="top-hud" class="pointer-events-none fixed top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 z-20 flex items-center justify-between gap-2">
+      <!-- Scene Title Pill -->
+      <div id="scene-badge" class="pointer-events-auto glass-panel flex items-center gap-2.5 rounded-full px-3.5 py-2 text-xs font-medium text-slate-200 max-w-[60%] sm:max-w-xs">
+        <span class="relative flex h-2 w-2 shrink-0">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-ember-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-ember-500"></span>
+        </span>
+        <span id="scene-title" class="truncate">Smoke Jumper — 360° View</span>
+      </div>
+
+      <!-- Compass / Heading Telemetry Pill -->
+      <div class="pointer-events-auto glass-panel flex items-center gap-2.5 rounded-full px-3.5 py-1.5 text-xs font-medium text-slate-300">
+        <div class="flex items-center gap-1.5">
+          <svg id="compass-needle" class="w-3.5 h-3.5 text-ember-400 transition-transform duration-75" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2L15.5 12L12 10L8.5 12L12 2Z" />
+            <path d="M12 22L8.5 12L12 14L15.5 12L12 22Z" opacity="0.35" />
+          </svg>
+          <span id="compass-cardinal" class="font-semibold text-ember-400 w-5 text-center">N</span>
+        </div>
+        <span class="h-3 w-px bg-white/15"></span>
+        <span id="telemetry-readout" class="font-mono text-[11px] text-slate-400 tabular-nums">0° / 0°</span>
+      </div>
+    </div>
+
+    <!-- Center Subtle Interaction Hint -->
+    <div id="drag-hint" class="pointer-events-none fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 transition-opacity duration-500">
+      <div class="glass-panel animate-float flex items-center gap-2.5 rounded-full px-4 py-2.5 text-xs font-medium text-white shadow-xl border border-ember-500/30">
+        <svg class="w-4 h-4 text-ember-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+        </svg>
+        <span>Drag to explore 360°</span>
+      </div>
+    </div>
+
+    <!-- Toast Notification Banner -->
+    <div id="toast-banner" class="pointer-events-none fixed bottom-20 left-1/2 -translate-x-1/2 z-30 opacity-0 transition-all duration-300 translate-y-2">
+      <div class="glass-panel rounded-full px-4 py-2 text-xs font-medium text-slate-100 border border-ember-500/40 flex items-center gap-2">
+        <span class="h-1.5 w-1.5 rounded-full bg-ember-400"></span>
+        <span id="toast-message">Notification</span>
+      </div>
+    </div>
+
+    <!-- Bottom Floating Glassmorphic Control Pill (Full Mode) -->
+    <div id="bottom-hud" class="pointer-events-none fixed bottom-3 left-3 right-3 sm:bottom-5 sm:left-4 sm:right-4 z-20 flex justify-center">
+      <div class="pointer-events-auto glass-panel flex items-center gap-1 sm:gap-1.5 rounded-full p-1.5 sm:p-2 max-w-full overflow-x-auto">
+
+        <!-- Zoom Out -->
+        <button id="btn-zoom-out" type="button" title="Zoom Out (-)" aria-label="Zoom Out"
+          class="hud-btn flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full border border-transparent text-slate-200">
+          <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
+          </svg>
+        </button>
+
+        <!-- Zoom In -->
+        <button id="btn-zoom-in" type="button" title="Zoom In (+)" aria-label="Zoom In"
+          class="hud-btn flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full border border-transparent text-slate-200">
+          <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+          </svg>
+        </button>
+
+        <div class="h-5 w-px bg-white/15 mx-0.5 shrink-0"></div>
+
+        <!-- Auto-Rotate Toggle -->
+        <button id="btn-autorotate" type="button" title="Toggle Auto-Rotate" aria-label="Toggle Auto-Rotate"
+          class="hud-btn flex h-9 sm:h-10 shrink-0 items-center gap-1.5 rounded-full border border-transparent px-3 text-xs font-medium text-slate-200">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <span class="hidden md:inline">Auto</span>
+        </button>
+
+        <!-- Reset View -->
+        <button id="btn-reset" type="button" title="Reset Camera View (R)" aria-label="Reset View"
+          class="hud-btn flex h-9 sm:h-10 shrink-0 items-center gap-1.5 rounded-full border border-transparent px-3 text-xs font-medium text-slate-200">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          <span class="hidden md:inline">Reset</span>
+        </button>
+
+        <!-- Gyroscope / Device Orientation Toggle -->
+        <button id="btn-gyro" type="button" title="Toggle Mobile Gyroscope" aria-label="Toggle Gyroscope"
+          class="hud-btn flex h-9 sm:h-10 shrink-0 items-center gap-1.5 rounded-full border border-transparent px-3 text-xs font-medium text-slate-200">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+          <span class="hidden md:inline">Gyro</span>
+        </button>
+
+        <div class="h-5 w-px bg-white/15 mx-0.5 shrink-0"></div>
+
+        <!-- Load Local/Drive Photo -->
+        <button id="btn-upload" type="button" title="Load Local 360° Photo" aria-label="Load Local Photo"
+          class="hud-btn flex h-9 sm:h-10 shrink-0 items-center gap-1.5 rounded-full border border-transparent px-3 text-xs font-medium text-slate-200">
+          <svg class="w-4 h-4 text-ember-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span class="hidden sm:inline">Load Photo</span>
+        </button>
+        <input id="file-input" type="file" accept="image/*" class="hidden" />
+
+        <!-- Embed Code Modal Button -->
+        <button id="btn-embed" type="button" title="Get Website Embed Code" aria-label="Embed Code"
+          class="hud-btn flex h-9 sm:h-10 shrink-0 items-center gap-1.5 rounded-full border border-transparent px-3 text-xs font-medium text-slate-200">
+          <svg class="w-4 h-4 text-ember-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+          </svg>
+          <span class="hidden sm:inline">Embed</span>
+        </button>
+
+        <div class="h-5 w-px bg-white/15 mx-0.5 shrink-0"></div>
+
+        <!-- Fullscreen Toggle -->
+        <button id="btn-fullscreen" type="button" title="Toggle Fullscreen (F)" aria-label="Toggle Fullscreen"
+          class="hud-btn flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full border border-transparent text-slate-200">
+          <svg id="icon-fs-enter" class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+          </svg>
+          <svg id="icon-fs-exit" class="hidden w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+          </svg>
+        </button>
+
+      </div>
+    </div>
+
+    <!-- Subtle Minimal-Mode Fullscreen Pill (Visible ONLY when ?ui=minimal) -->
+    <div id="minimal-fs-hud" class="hidden pointer-events-none fixed bottom-3 right-3 sm:bottom-4 sm:right-4 z-20">
+      <button id="btn-minimal-fullscreen" type="button" title="Toggle Fullscreen" aria-label="Toggle Fullscreen"
+        class="pointer-events-auto glass-panel hud-btn flex h-9 w-9 items-center justify-center rounded-full text-slate-200">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Embed Code & Google Drive Customizer Modal -->
+    <div id="embed-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+      <div class="glass-panel w-full max-w-lg rounded-2xl border border-white/15 p-5 sm:p-6 shadow-2xl text-slate-200 max-h-[92vh] overflow-y-auto">
+        <div class="flex items-center justify-between border-b border-white/10 pb-3.5">
+          <div class="flex items-center gap-2.5">
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-ember-500/20 text-ember-400">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+              </svg>
+            </div>
+            <div>
+              <h2 class="text-sm sm:text-base font-semibold text-white">Embed 360° Viewer on Your Website</h2>
+              <p class="text-xs text-slate-400">Pre-configured with your Google Drive 360° Smoke Jumper photo</p>
+            </div>
+          </div>
+          <button id="btn-close-modal" type="button" aria-label="Close modal"
+            class="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Customizer Controls -->
+        <div class="mt-4 space-y-3.5">
+          <div>
+            <label for="embed-img-input" class="block text-xs font-medium text-slate-300 mb-1">
+              Google Drive Share Link, File ID, or Direct Image URL
+            </label>
+            <div class="flex gap-2">
+              <input id="embed-img-input" type="text"
+                value="https://drive.google.com/file/d/16F_nsNMTUBQzepJnhOjWfpmBVZZbqP5l/view?usp=sharing"
+                placeholder="Paste Google Drive link, File ID, or image URL..."
+                class="w-full rounded-xl bg-black/50 border border-white/15 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-ember-500 focus:outline-none" />
+              <button id="btn-preview-drive" type="button"
+                class="shrink-0 rounded-xl bg-white/10 hover:bg-ember-600 border border-white/15 hover:border-ember-500 px-3 py-2 text-xs font-medium text-white transition">
+                Load
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <label class="flex items-center justify-between rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-xs cursor-pointer">
+              <span class="text-slate-300">Auto-Rotate</span>
+              <input id="embed-autorotate-chk" type="checkbox" class="accent-ember-500 h-4 w-4 rounded" />
+            </label>
+            <label class="flex items-center justify-between rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-xs cursor-pointer">
+              <span class="text-slate-300">Minimal UI (<code class="text-ember-400">?ui=minimal</code>)</span>
+              <input id="embed-minimal-chk" type="checkbox" class="accent-ember-500 h-4 w-4 rounded" />
+            </label>
+          </div>
+
+          <!-- Generated Iframe Snippet -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-medium text-slate-300">HTML &lt;iframe&gt; Embed Code</span>
+              <button id="btn-copy-embed" type="button"
+                class="inline-flex items-center gap-1.5 rounded-lg bg-ember-600 hover:bg-ember-500 px-2.5 py-1 text-xs font-medium text-white transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <span id="copy-btn-label">Copy Code</span>
+              </button>
+            </div>
+            <textarea id="embed-code-output" readonly rows="5"
+              class="w-full rounded-xl bg-black/70 border border-white/15 p-3 font-mono text-[11px] leading-relaxed text-ember-300 focus:outline-none resize-none"></textarea>
+          </div>
+
+          <!-- Standalone HTML Download -->
+          <div class="flex items-center justify-between gap-3 rounded-xl bg-ember-500/10 border border-ember-500/30 p-3">
+            <div class="text-[11px] text-slate-300">
+              <p class="font-semibold text-white">Download Standalone HTML File</p>
+              <p class="text-slate-400">Exports a single self-contained file with the active 360° photo baked in (or linked to your Drive ID).</p>
+            </div>
+            <button id="btn-download-standalone" type="button"
+              class="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-white/10 hover:bg-ember-600 border border-white/15 hover:border-ember-500 px-3 py-2 text-xs font-medium text-white transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <span>Download HTML</span>
+            </button>
+          </div>
+
+          <!-- Supported URL Parameters Guide -->
+          <div class="rounded-xl bg-white/[0.03] border border-white/10 p-3 text-[11px] text-slate-400 space-y-1">
+            <p class="font-semibold text-slate-200">Supported URL Query Parameters:</p>
+            <p>• <code class="text-ember-400">?img=</code> — Any Google Drive share URL, Drive File ID, or direct image URL</p>
+            <p>• <code class="text-ember-400">&amp;autorotate=true</code> — Starts smooth horizontal rotation automatically</p>
+            <p>• <code class="text-ember-400">&amp;ui=minimal</code> — Hides HUD bars for clean iframe embedding (shows only fullscreen button)</p>
+            <p>• <code class="text-ember-400">&amp;fov=75&amp;yaw=0&amp;pitch=0</code> — Sets initial field of view and camera angles</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * Standalone Equirectangular 360° Panorama Viewer
+     * Automatically loads shared Google Drive 360° panoramas via a CORS-safe
+     * multi-endpoint cascade, with local file & procedural fallback support.
+     */
+    (function () {
+      'use strict';
+
+      // -----------------------------------------------------------------------
+      // 1. Default Google Drive Photo ID & URL Query Parameter Configuration
+      // -----------------------------------------------------------------------
+      const DEFAULT_DRIVE_FILE_ID = '16F_nsNMTUBQzepJnhOjWfpmBVZZbqP5l';
+      const EMBEDDED_DATA_URI = ""; // Populated if exported via "Download HTML"
+      const LOCAL_FALLBACK_CANDIDATES = [
+        'smokejumper.jpg',
+        'smokejumper.jpeg',
+        'smoke jumper.jpeg',
+        'smoke jumper.jpg'
+      ];
+
+      const urlParams = new URLSearchParams(window.location.search);
+
+      function parseNumericParam(name, fallback, min, max) {
+        const raw = urlParams.get(name);
+        if (raw === null || raw.trim() === '') return fallback;
+        const parsed = parseFloat(raw);
+        if (Number.isNaN(parsed)) return fallback;
+        return Math.max(min, Math.min(max, parsed));
+      }
+
+      const config = {
+        explicitImg: (urlParams.get('img') || '').trim(),
+        activeSourceInput: (urlParams.get('img') || DEFAULT_DRIVE_FILE_ID).trim(),
+        autoRotate: urlParams.get('autorotate') === 'true',
+        uiMode: (urlParams.get('ui') || 'full').toLowerCase(), // 'full' | 'minimal'
+        defaultYaw: parseNumericParam('yaw', 0, -360, 360),
+        defaultPitch: parseNumericParam('pitch', 0, -85, 85),
+        defaultFov: parseNumericParam('fov', 75, 35, 100),
+        minFov: 35,
+        maxFov: 100,
+        dampingFactor: 0.08,
+        autoRotateSpeed: 0.06,
+      };
+
+      // -----------------------------------------------------------------------
+      // 2. Google Drive ID Extractor & CORS-Safe Candidate Cascade Builder
+      // -----------------------------------------------------------------------
+      /**
+       * Extracts a Google Drive File ID from standard sharing links, open/uc URLs,
+       * lh3 CDN URLs, or a raw 25-60 character File ID string.
+       */
+      function extractGoogleDriveId(input) {
+        if (!input || typeof input !== 'string') return null;
+        const trimmed = input.trim();
+
+        // Raw Google Drive File ID (alphanumeric, underscores, hyphens, 25-60 chars)
+        if (/^[a-zA-Z0-9_-]{25,60}$/.test(trimmed)) {
+          return trimmed;
+        }
+
+        // Match /file/d/<ID> or /d/<ID> (including lh3.googleusercontent.com/d/<ID>)
+        const pathMatch = trimmed.match(/(?:\/file\/d\/|\/d\/)([a-zA-Z0-9_-]{25,60})/);
+        if (pathMatch && pathMatch[1]) {
+          return pathMatch[1];
+        }
+
+        // Match ?id=<ID> or &id=<ID> (drive.google.com/open?id=..., uc?id=..., thumbnail?id=...)
+        if (trimmed.includes('drive.google.com') || trimmed.includes('docs.google.com')) {
+          const queryMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]{25,60})/);
+          if (queryMatch && queryMatch[1]) {
+            return queryMatch[1];
+          }
+        }
+
+        return null;
+      }
+
+      /**
+       * Builds a prioritized list of CORS-compatible URLs for any input string.
+       */
+      function resolveImageCandidates(input) {
+        const trimmed = (input || '').trim();
+        if (!trimmed) return [];
+
+        const driveId = extractGoogleDriveId(trimmed);
+        if (driveId) {
+          return [
+            `https://lh3.googleusercontent.com/d/${driveId}=w4096`,
+            `https://lh3.googleusercontent.com/d/${driveId}`,
+            `https://drive.google.com/thumbnail?id=${driveId}&sz=w4096`,
+            `https://drive.google.com/uc?export=view&id=${driveId}`
+          ];
+        }
+
+        return [trimmed];
+      }
+
+      // -----------------------------------------------------------------------
+      // 3. DOM Element References & UI Mode Initialization
+      // -----------------------------------------------------------------------
+      const container = document.getElementById('viewer-container');
+      const canvas = document.getElementById('viewer-canvas');
+      const loadingOverlay = document.getElementById('loading-overlay');
+      const loadingText = document.getElementById('loading-text');
+      const dropOverlay = document.getElementById('drop-overlay');
+      const dragHint = document.getElementById('drag-hint');
+
+      const topHud = document.getElementById('top-hud');
+      const bottomHud = document.getElementById('bottom-hud');
+      const minimalFsHud = document.getElementById('minimal-fs-hud');
+      const sceneTitleEl = document.getElementById('scene-title');
+      const compassNeedle = document.getElementById('compass-needle');
+      const compassCardinal = document.getElementById('compass-cardinal');
+      const telemetryReadout = document.getElementById('telemetry-readout');
+
+      const toastBanner = document.getElementById('toast-banner');
+      const toastMessage = document.getElementById('toast-message');
+
+      const btnZoomIn = document.getElementById('btn-zoom-in');
+      const btnZoomOut = document.getElementById('btn-zoom-out');
+      const btnAutoRotate = document.getElementById('btn-autorotate');
+      const btnReset = document.getElementById('btn-reset');
+      const btnGyro = document.getElementById('btn-gyro');
+      const btnUpload = document.getElementById('btn-upload');
+      const fileInput = document.getElementById('file-input');
+      const btnEmbed = document.getElementById('btn-embed');
+      const btnFullscreen = document.getElementById('btn-fullscreen');
+      const btnMinimalFullscreen = document.getElementById('btn-minimal-fullscreen');
+      const iconFsEnter = document.getElementById('icon-fs-enter');
+      const iconFsExit = document.getElementById('icon-fs-exit');
+
+      const embedModal = document.getElementById('embed-modal');
+      const btnCloseModal = document.getElementById('btn-close-modal');
+      const embedImgInput = document.getElementById('embed-img-input');
+      const btnPreviewDrive = document.getElementById('btn-preview-drive');
+      const embedAutoRotateChk = document.getElementById('embed-autorotate-chk');
+      const embedMinimalChk = document.getElementById('embed-minimal-chk');
+      const embedCodeOutput = document.getElementById('embed-code-output');
+      const btnCopyEmbed = document.getElementById('btn-copy-embed');
+      const copyBtnLabel = document.getElementById('copy-btn-label');
+      const btnDownloadStandalone = document.getElementById('btn-download-standalone');
+
+      // Apply Minimal UI Mode (?ui=minimal): hide HUD bars, show subtle fullscreen pill
+      if (config.uiMode === 'minimal') {
+        if (topHud) topHud.classList.add('hidden');
+        if (bottomHud) bottomHud.classList.add('hidden');
+        if (minimalFsHud) minimalFsHud.classList.remove('hidden');
+      }
+
+      // -----------------------------------------------------------------------
+      // 4. Toast Notification & Procedural Fallback Panorama
+      // -----------------------------------------------------------------------
+      let toastTimeout = null;
+      function showToast(msg) {
+        toastMessage.textContent = msg;
+        toastBanner.classList.remove('opacity-0', 'translate-y-2');
+        if (toastTimeout) clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+          toastBanner.classList.add('opacity-0', 'translate-y-2');
+        }, 3400);
+      }
+
+      function formatTitleFromSource(src, customLabel) {
+        if (customLabel) return customLabel;
+        if (!src) return 'Smoke Jumper — 360° View';
+        const driveId = extractGoogleDriveId(src);
+        if (driveId === DEFAULT_DRIVE_FILE_ID) {
+          return 'Smoke Jumper — 360° View';
+        }
+        if (driveId) {
+          return `Google Drive 360° (${driveId.slice(0, 8)}…)`;
+        }
+        if (src.startsWith('blob:') || src.startsWith('data:')) {
+          return 'Custom 360° Panorama';
+        }
+        try {
+          const cleanName = decodeURIComponent(src.split('/').pop().split('?')[0]);
+          return cleanName.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ') || '360° Panorama';
+        } catch (e) {
+          return '360° Panorama';
+        }
+      }
+
+      /**
+       * Procedural fallback equirectangular panorama used only if network/Drive
+       * and local files are completely unreachable (prevents a blank black screen).
+       */
+      function createFallbackEquirectangularTexture() {
+        const fbCanvas = document.createElement('canvas');
+        fbCanvas.width = 2048;
+        fbCanvas.height = 1024;
+        const ctx = fbCanvas.getContext('2d');
+        const W = fbCanvas.width;
+        const H = fbCanvas.height;
+
+        const skyGrad = ctx.createLinearGradient(0, 0, 0, H * 0.62);
+        skyGrad.addColorStop(0.0, '#1f2937');
+        skyGrad.addColorStop(0.35, '#78350f');
+        skyGrad.addColorStop(0.75, '#f59e0b');
+        skyGrad.addColorStop(1.0, '#fef3c7');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, W, H * 0.62);
+
+        ctx.fillStyle = '#1c1917';
+        ctx.beginPath();
+        ctx.moveTo(0, H * 0.56);
+        for (let x = 0; x <= W; x += 64) {
+          const ridge = Math.sin(x * 0.006) * 28 + Math.cos(x * 0.015) * 16;
+          ctx.lineTo(x, H * 0.52 + ridge);
+        }
+        ctx.lineTo(W, H);
+        ctx.lineTo(0, H);
+        ctx.closePath();
+        ctx.fill();
+
+        const fireGrad = ctx.createRadialGradient(W * 0.5, H * 0.54, 20, W * 0.5, H * 0.54, 520);
+        fireGrad.addColorStop(0, 'rgba(251, 146, 60, 0.75)');
+        fireGrad.addColorStop(0.5, 'rgba(234, 88, 12, 0.35)');
+        fireGrad.addColorStop(1, 'rgba(234, 88, 12, 0)');
+        ctx.fillStyle = fireGrad;
+        ctx.fillRect(0, H * 0.35, W, H * 0.35);
+
+        ctx.fillStyle = '#d6d3d1';
+        ctx.beginPath();
+        ctx.ellipse(W * 0.5, 0, W * 0.42, H * 0.14, 0, 0, Math.PI);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(28, 25, 23, 0.65)';
+        ctx.lineWidth = 2;
+        for (let i = -8; i <= 8; i++) {
+          ctx.beginPath();
+          ctx.moveTo(W * 0.5 + i * 48, H * 0.11);
+          ctx.lineTo(W * 0.5 + (i < 0 ? -150 : 150), H * 0.48);
+          ctx.stroke();
+        }
+
+        const groundGrad = ctx.createLinearGradient(0, H * 0.58, 0, H);
+        groundGrad.addColorStop(0, '#14532d');
+        groundGrad.addColorStop(0.45, '#1c1917');
+        groundGrad.addColorStop(1, '#292524');
+        ctx.fillStyle = groundGrad;
+        ctx.fillRect(0, H * 0.58, W, H * 0.42);
+
+        ctx.fillStyle = 'rgba(11, 13, 16, 0.78)';
+        ctx.beginPath();
+        ctx.roundRect(W / 2 - 410, H / 2 - 64, 820, 128, 20);
+        ctx.fill();
+        ctx.strokeStyle = '#f97316';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '600 26px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Offline / Preview Fallback — 360° Viewer Ready', W / 2, H / 2 - 12);
+
+        ctx.fillStyle = '#fdba74';
+        ctx.font = '18px Inter, sans-serif';
+        ctx.fillText('Ensure Google Drive sharing is set to "Anyone with the link" or drop a photo here', W / 2, H / 2 + 26);
+
+        const tex = new THREE.CanvasTexture(fbCanvas);
+        if (tex.colorSpace !== undefined) {
+          tex.colorSpace = THREE.SRGBColorSpace;
+        } else if (tex.encoding !== undefined) {
+          tex.encoding = THREE.sRGBEncoding;
+        }
+        return tex;
+      }
+
+      // -----------------------------------------------------------------------
+      // 5. Three.js 360° Inverted Sphere Engine Setup
+      // -----------------------------------------------------------------------
+      const renderer = new THREE.WebGLRenderer({
+        canvas: canvas,
+        antialias: true,
+        alpha: false,
+        powerPreference: 'high-performance',
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      if (renderer.outputColorSpace !== undefined) {
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+      } else if (renderer.outputEncoding !== undefined) {
+        renderer.outputEncoding = THREE.sRGBEncoding;
+      }
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        config.defaultFov,
+        container.clientWidth / container.clientHeight,
+        0.1,
+        1100
+      );
+      camera.position.set(0, 0, 0);
+
+      // High-resolution sphere inverted inward (-1 on X axis)
+      // Rotated -90° around Y so the center of the equirectangular photo aligns with yaw = 0°
+      const sphereGeometry = new THREE.SphereGeometry(500, 96, 64);
+      sphereGeometry.scale(-1, 1, 1);
+      sphereGeometry.rotateY(-Math.PI / 2);
+
+      const sphereMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+      });
+
+      const sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
+      scene.add(sphereMesh);
+
+      // -----------------------------------------------------------------------
+      // 6. Texture Loader with CORS-Safe Cascade & High-Res Filtering
+      // -----------------------------------------------------------------------
+      const textureLoader = new THREE.TextureLoader();
+      textureLoader.setCrossOrigin('anonymous');
+
+      let activeImageElement = null;
+      let loadGeneration = 0;
+
+      function applyLoadedTexture(texture, label, sourceInput) {
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.generateMipmaps = false;
+
+        if (texture.colorSpace !== undefined) {
+          texture.colorSpace = THREE.SRGBColorSpace;
+        } else if (texture.encoding !== undefined) {
+          texture.encoding = THREE.sRGBEncoding;
+        }
+
+        const maxAniso = renderer.capabilities.getMaxAnisotropy();
+        if (maxAniso) {
+          texture.anisotropy = maxAniso;
+        }
+
+        if (sphereMaterial.map) {
+          sphereMaterial.map.dispose();
+        }
+        sphereMaterial.map = texture;
+        sphereMaterial.needsUpdate = true;
+
+        activeImageElement = texture.image || null;
+        if (sourceInput) {
+          config.activeSourceInput = sourceInput;
+        }
+
+        sceneTitleEl.textContent = formatTitleFromSource(sourceInput, label);
+
+        setTimeout(() => {
+          loadingOverlay.classList.add('opacity-0', 'pointer-events-none');
+        }, 160);
+      }
+
+      function loadCandidateQueue(urls, customLabel, sourceInput, generationId) {
+        if (generationId !== loadGeneration) return;
+
+        if (!urls || urls.length === 0) {
+          console.warn('All panorama candidates failed to load; showing procedural fallback.');
+          const fallbackTex = createFallbackEquirectangularTexture();
+          if (sphereMaterial.map) {
+            sphereMaterial.map.dispose();
+          }
+          sphereMaterial.map = fallbackTex;
+          sphereMaterial.needsUpdate = true;
+          activeImageElement = null;
+
+          sceneTitleEl.textContent = 'Smoke Jumper — 360° Preview';
+          loadingOverlay.classList.add('opacity-0', 'pointer-events-none');
+          showToast('Could not reach Drive image — drop a local 360° photo to preview');
+          return;
+        }
+
+        const currentUrl = urls[0];
+        const remainingUrls = urls.slice(1);
+
+        textureLoader.load(
+          currentUrl,
+          (texture) => {
+            if (generationId !== loadGeneration) {
+              texture.dispose();
+              return;
+            }
+            applyLoadedTexture(texture, customLabel, sourceInput);
+          },
+          undefined,
+          () => {
+            if (generationId !== loadGeneration) return;
+            loadCandidateQueue(remainingUrls, customLabel, sourceInput, generationId);
+          }
+        );
+      }
+
+      function loadPanoramaFromInput(sourceInput, customLabel, extraFallbacks = []) {
+        loadGeneration += 1;
+        const genId = loadGeneration;
+
+        loadingText.textContent = 'Loading 360° Panorama...';
+        loadingOverlay.classList.remove('opacity-0', 'pointer-events-none');
+
+        const resolved = resolveImageCandidates(sourceInput);
+        const fullQueue = [...resolved, ...extraFallbacks];
+        loadCandidateQueue(fullQueue, customLabel, sourceInput, genId);
+      }
+
+      function loadInitialPanorama() {
+        if (config.explicitImg) {
+          loadPanoramaFromInput(config.explicitImg, null, LOCAL_FALLBACK_CANDIDATES);
+          return;
+        }
+        if (EMBEDDED_DATA_URI) {
+          loadPanoramaFromInput(EMBEDDED_DATA_URI, 'Smoke Jumper — 360° View');
+          return;
+        }
+        // Default: load Google Drive File ID 16F_nsNMTUBQzepJnhOjWfpmBVZZbqP5l first,
+        // then fall back to local filenames if offline.
+        loadPanoramaFromInput(
+          DEFAULT_DRIVE_FILE_ID,
+          'Smoke Jumper — 360° View',
+          LOCAL_FALLBACK_CANDIDATES
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // 7. Camera State, Damped Spherical Inertia, Pinch Zoom & Gyroscope
+      // -----------------------------------------------------------------------
+      const cameraState = {
+        yaw: config.defaultYaw,
+        pitch: config.defaultPitch,
+        fov: config.defaultFov,
+        targetYaw: config.defaultYaw,
+        targetPitch: config.defaultPitch,
+        targetFov: config.defaultFov,
+        isDragging: false,
+        dragStartX: 0,
+        dragStartY: 0,
+        dragStartYaw: 0,
+        dragStartPitch: 0,
+        autoRotate: config.autoRotate,
+        gyroEnabled: false,
+        gyroBaseAlpha: null,
+        gyroBaseBeta: null,
+        hasInteracted: false,
+      };
+
+      const lookTarget = new THREE.Vector3();
+
+      function dismissDragHint() {
+        if (!cameraState.hasInteracted) {
+          cameraState.hasInteracted = true;
+          dragHint.classList.add('opacity-0');
+        }
+      }
+
+      function syncAutoRotateUI() {
+        if (cameraState.autoRotate) {
+          btnAutoRotate.classList.add('active');
+        } else {
+          btnAutoRotate.classList.remove('active');
+        }
+      }
+      syncAutoRotateUI();
+
+      // Pointer / Mouse Drag Handlers
+      canvas.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        dismissDragHint();
+        cameraState.isDragging = true;
+        cameraState.dragStartX = e.clientX;
+        cameraState.dragStartY = e.clientY;
+        cameraState.dragStartYaw = cameraState.targetYaw;
+        cameraState.dragStartPitch = cameraState.targetPitch;
+        canvas.setPointerCapture(e.pointerId);
+      });
+
+      canvas.addEventListener('pointermove', (e) => {
+        if (!cameraState.isDragging) return;
+        const dx = e.clientX - cameraState.dragStartX;
+        const dy = e.clientY - cameraState.dragStartY;
+
+        const fovScale = cameraState.fov / 75;
+        const sensitivity = 0.14 * fovScale;
+
+        cameraState.targetYaw = cameraState.dragStartYaw - dx * sensitivity;
+        cameraState.targetPitch = Math.max(
+          -85,
+          Math.min(85, cameraState.dragStartPitch + dy * sensitivity)
+        );
+      });
+
+      function endPointerDrag(e) {
+        if (!cameraState.isDragging) return;
+        cameraState.isDragging = false;
+        if (e && e.pointerId !== undefined) {
+          try {
+            canvas.releasePointerCapture(e.pointerId);
+          } catch (_) {}
+        }
+      }
+
+      canvas.addEventListener('pointerup', endPointerDrag);
+      canvas.addEventListener('pointercancel', endPointerDrag);
+
+      // Scroll Wheel Zoom
+      canvas.addEventListener(
+        'wheel',
+        (e) => {
+          e.preventDefault();
+          dismissDragHint();
+          const zoomDelta = e.deltaY * 0.04;
+          cameraState.targetFov = Math.max(
+            config.minFov,
+            Math.min(config.maxFov, cameraState.targetFov + zoomDelta)
+          );
+        },
+        { passive: false }
+      );
+
+      // Two-Finger Touch Pinch-to-Zoom
+      let initialPinchDistance = null;
+      let initialPinchFov = config.defaultFov;
+
+      canvas.addEventListener(
+        'touchstart',
+        (e) => {
+          if (e.touches.length === 2) {
+            cameraState.isDragging = false;
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            initialPinchDistance = Math.hypot(dx, dy);
+            initialPinchFov = cameraState.targetFov;
+          }
+        },
+        { passive: true }
+      );
+
+      canvas.addEventListener(
+        'touchmove',
+        (e) => {
+          if (e.touches.length === 2 && initialPinchDistance) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const currentDistance = Math.hypot(dx, dy);
+            const scale = initialPinchDistance / Math.max(1, currentDistance);
+            cameraState.targetFov = Math.max(
+              config.minFov,
+              Math.min(config.maxFov, initialPinchFov * scale)
+            );
+          }
+        },
+        { passive: true }
+      );
+
+      canvas.addEventListener(
+        'touchend',
+        (e) => {
+          if (e.touches.length < 2) {
+            initialPinchDistance = null;
+          }
+        },
+        { passive: true }
+      );
+
+      // Keyboard Navigation
+      window.addEventListener('keydown', (e) => {
+        if (embedModal && !embedModal.classList.contains('hidden')) {
+          if (e.key === 'Escape') closeEmbedModal();
+          return;
+        }
+        const step = 6;
+        switch (e.key) {
+          case 'ArrowLeft':
+            dismissDragHint();
+            cameraState.targetYaw -= step;
+            break;
+          case 'ArrowRight':
+            dismissDragHint();
+            cameraState.targetYaw += step;
+            break;
+          case 'ArrowUp':
+            dismissDragHint();
+            cameraState.targetPitch = Math.min(85, cameraState.targetPitch + step);
+            break;
+          case 'ArrowDown':
+            dismissDragHint();
+            cameraState.targetPitch = Math.max(-85, cameraState.targetPitch - step);
+            break;
+          case '+':
+          case '=':
+            cameraState.targetFov = Math.max(config.minFov, cameraState.targetFov - 6);
+            break;
+          case '-':
+          case '_':
+            cameraState.targetFov = Math.min(config.maxFov, cameraState.targetFov + 6);
+            break;
+          case 'r':
+          case 'R':
+            resetCameraView();
+            break;
+          case 'f':
+          case 'F':
+            toggleFullscreen();
+            break;
+        }
+      });
+
+      // -----------------------------------------------------------------------
+      // 8. HUD Control Button Listeners
+      // -----------------------------------------------------------------------
+      function resetCameraView() {
+        cameraState.targetYaw = config.defaultYaw;
+        cameraState.targetPitch = config.defaultPitch;
+        cameraState.targetFov = config.defaultFov;
+        showToast('View reset to forward horizon');
+      }
+
+      btnZoomIn.addEventListener('click', () => {
+        dismissDragHint();
+        cameraState.targetFov = Math.max(config.minFov, cameraState.targetFov - 10);
+      });
+
+      btnZoomOut.addEventListener('click', () => {
+        dismissDragHint();
+        cameraState.targetFov = Math.min(config.maxFov, cameraState.targetFov + 10);
+      });
+
+      btnAutoRotate.addEventListener('click', () => {
+        dismissDragHint();
+        cameraState.autoRotate = !cameraState.autoRotate;
+        syncAutoRotateUI();
+        showToast(cameraState.autoRotate ? 'Auto-rotate enabled' : 'Auto-rotate paused');
+      });
+
+      btnReset.addEventListener('click', resetCameraView);
+
+      // Mobile Gyroscope (DeviceOrientation API)
+      function handleDeviceOrientation(event) {
+        if (!cameraState.gyroEnabled || cameraState.isDragging) return;
+        if (event.alpha === null || event.beta === null) return;
+
+        if (cameraState.gyroBaseAlpha === null) {
+          cameraState.gyroBaseAlpha = event.alpha;
+          cameraState.gyroBaseBeta = event.beta;
+        }
+
+        const deltaAlpha = event.alpha - cameraState.gyroBaseAlpha;
+        const deltaBeta = event.beta - cameraState.gyroBaseBeta;
+
+        cameraState.targetYaw = config.defaultYaw - deltaAlpha * 0.85;
+        cameraState.targetPitch = Math.max(
+          -85,
+          Math.min(85, config.defaultPitch + deltaBeta * 0.65)
+        );
+      }
+
+      btnGyro.addEventListener('click', async () => {
+        if (cameraState.gyroEnabled) {
+          cameraState.gyroEnabled = false;
+          cameraState.gyroBaseAlpha = null;
+          cameraState.gyroBaseBeta = null;
+          window.removeEventListener('deviceorientation', handleDeviceOrientation);
+          btnGyro.classList.remove('active');
+          showToast('Gyroscope look disabled');
+          return;
+        }
+
+        if (
+          typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function'
+        ) {
+          try {
+            const permission = await DeviceOrientationEvent.requestPermission();
+            if (permission !== 'granted') {
+              showToast('Motion sensor permission denied');
+              return;
+            }
+          } catch (err) {
+            showToast('Gyroscope unavailable on this device');
+            return;
+          }
+        }
+
+        if (!('DeviceOrientationEvent' in window)) {
+          showToast('Gyroscope not supported on this browser');
+          return;
+        }
+
+        cameraState.gyroEnabled = true;
+        cameraState.gyroBaseAlpha = null;
+        cameraState.gyroBaseBeta = null;
+        window.addEventListener('deviceorientation', handleDeviceOrientation);
+        btnGyro.classList.add('active');
+        dismissDragHint();
+        showToast('Gyroscope look enabled — move device to explore');
+      });
+
+      // Fullscreen API
+      function toggleFullscreen() {
+        const docEl = document.documentElement;
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+          if (docEl.requestFullscreen) {
+            docEl.requestFullscreen().catch(() => {});
+          } else if (docEl.webkitRequestFullscreen) {
+            docEl.webkitRequestFullscreen();
+          }
+        } else {
+          if (document.exitFullscreen) {
+            document.exitFullscreen().catch(() => {});
+          } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+          }
+        }
+      }
+
+      btnFullscreen.addEventListener('click', toggleFullscreen);
+      if (btnMinimalFullscreen) {
+        btnMinimalFullscreen.addEventListener('click', toggleFullscreen);
+      }
+
+      function onFullscreenChange() {
+        const isFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+        iconFsEnter.classList.toggle('hidden', isFs);
+        iconFsExit.classList.toggle('hidden', !isFs);
+      }
+      document.addEventListener('fullscreenchange', onFullscreenChange);
+      document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+
+      // -----------------------------------------------------------------------
+      // 9. Local File Upload & Drag-and-Drop Custom 360° Photo Support
+      // -----------------------------------------------------------------------
+      let currentBlobUrl = null;
+
+      function handleLocalImageFile(file) {
+        if (!file || !file.type.startsWith('image/')) {
+          showToast('Please select a valid image file (JPG, PNG, WebP)');
+          return;
+        }
+        if (currentBlobUrl) {
+          URL.revokeObjectURL(currentBlobUrl);
+        }
+        currentBlobUrl = URL.createObjectURL(file);
+        const cleanTitle = file.name.replace(/\.[^/.]+$/, '');
+        loadPanoramaFromInput(currentBlobUrl, cleanTitle);
+        dismissDragHint();
+        showToast(`Loaded "${file.name}"`);
+      }
+
+      btnUpload.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          handleLocalImageFile(e.target.files[0]);
+          fileInput.value = '';
+        }
+      });
+
+      let dragDepth = 0;
+      window.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        dragDepth++;
+        dropOverlay.classList.remove('opacity-0');
+      });
+
+      window.addEventListener('dragover', (e) => {
+        e.preventDefault();
+      });
+
+      window.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0) {
+          dropOverlay.classList.add('opacity-0');
+        }
+      });
+
+      window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragDepth = 0;
+        dropOverlay.classList.add('opacity-0');
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+          handleLocalImageFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      // -----------------------------------------------------------------------
+      // 10. Embed Code Generator Modal & Standalone HTML Export
+      // -----------------------------------------------------------------------
+      function updateEmbedSnippet() {
+        const baseUrl = window.location.href.split('?')[0].split('#')[0];
+        const rawInput = embedImgInput.value.trim() || DEFAULT_DRIVE_FILE_ID;
+        const driveId = extractGoogleDriveId(rawInput);
+        const imgParamValue = driveId ? driveId : rawInput;
+
+        const params = new URLSearchParams();
+        params.set('img', imgParamValue);
+        if (embedAutoRotateChk.checked) params.set('autorotate', 'true');
+        if (embedMinimalChk.checked) params.set('ui', 'minimal');
+
+        const fullSrc = `${baseUrl}?${params.toString()}`;
+        embedCodeOutput.value = `<iframe\n  src="${fullSrc}"\n  width="100%"\n  height="540"\n  style="border:0; border-radius:12px; overflow:hidden;"\n  allowfullscreen\n  allow="gyroscope; accelerometer; fullscreen"\n  loading="lazy"\n  title="360° Interactive Panorama"\n></iframe>`;
+      }
+
+      function openEmbedModal() {
+        if (
+          config.activeSourceInput &&
+          !config.activeSourceInput.startsWith('blob:') &&
+          !config.activeSourceInput.startsWith('data:')
+        ) {
+          embedImgInput.value =
+            config.activeSourceInput === DEFAULT_DRIVE_FILE_ID
+              ? `https://drive.google.com/file/d/${DEFAULT_DRIVE_FILE_ID}/view?usp=sharing`
+              : config.activeSourceInput;
+        }
+        embedAutoRotateChk.checked = cameraState.autoRotate;
+        embedMinimalChk.checked = config.uiMode === 'minimal';
+        updateEmbedSnippet();
+        embedModal.classList.remove('hidden');
+      }
+
+      function closeEmbedModal() {
+        embedModal.classList.add('hidden');
+      }
+
+      btnEmbed.addEventListener('click', openEmbedModal);
+      btnCloseModal.addEventListener('click', closeEmbedModal);
+      embedModal.addEventListener('click', (e) => {
+        if (e.target === embedModal) closeEmbedModal();
+      });
+
+      embedImgInput.addEventListener('input', updateEmbedSnippet);
+      embedAutoRotateChk.addEventListener('change', updateEmbedSnippet);
+      embedMinimalChk.addEventListener('change', updateEmbedSnippet);
+
+      btnPreviewDrive.addEventListener('click', () => {
+        const val = embedImgInput.value.trim();
+        if (!val) {
+          showToast('Enter a Google Drive link, File ID, or image URL');
+          return;
+        }
+        loadPanoramaFromInput(val);
+        updateEmbedSnippet();
+        closeEmbedModal();
+        showToast('Loading panorama source...');
+      });
+
+      btnCopyEmbed.addEventListener('click', () => {
+        embedCodeOutput.select();
+        embedCodeOutput.setSelectionRange(0, 99999);
+        try {
+          document.execCommand('copy');
+          copyBtnLabel.textContent = 'Copied!';
+          showToast('Iframe embed code copied to clipboard');
+          setTimeout(() => {
+            copyBtnLabel.textContent = 'Copy Code';
+          }, 2000);
+        } catch (err) {
+          showToast('Press Ctrl+C / Cmd+C to copy');
+        }
+      });
+
+      /**
+       * Downloads a standalone .html file. If the active texture can be serialized
+       * to a JPEG Data URI (same-origin or CORS-enabled CDN), it bakes the image
+       * directly into the HTML; otherwise it preserves the active Google Drive ID.
+       */
+      btnDownloadStandalone.addEventListener('click', () => {
+        let htmlSource = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        let bakedImage = false;
+
+        if (activeImageElement) {
+          try {
+            const exportCanvas = document.createElement('canvas');
+            exportCanvas.width = activeImageElement.naturalWidth || activeImageElement.width || 2048;
+            exportCanvas.height = activeImageElement.naturalHeight || activeImageElement.height || 1024;
+            const ctx = exportCanvas.getContext('2d');
+            ctx.drawImage(activeImageElement, 0, 0, exportCanvas.width, exportCanvas.height);
+            const dataUri = exportCanvas.toDataURL('image/jpeg', 0.9);
+            htmlSource = htmlSource.replace(
+              /const EMBEDDED_DATA_URI = ".*?";/,
+              `const EMBEDDED_DATA_URI = "${dataUri}";`
+            );
+            bakedImage = true;
+          } catch (_) {
+            bakedImage = false;
+          }
+        }
+
+        if (!bakedImage) {
+          const activeDriveId =
+            extractGoogleDriveId(embedImgInput.value) ||
+            extractGoogleDriveId(config.activeSourceInput) ||
+            DEFAULT_DRIVE_FILE_ID;
+          htmlSource = htmlSource.replace(
+            /const DEFAULT_DRIVE_FILE_ID = '.*?';/,
+            `const DEFAULT_DRIVE_FILE_ID = '${activeDriveId}';`
+          );
+        }
+
+        const blob = new Blob([htmlSource], { type: 'text/html;charset=utf-8' });
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = 'smokejumper-360-viewer.html';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
+
+        showToast(
+          bakedImage
+            ? 'Downloaded self-contained HTML with baked 360° photo'
+            : 'Downloaded standalone HTML configured with your Google Drive ID'
+        );
+      });
+
+      // -----------------------------------------------------------------------
+      // 11. Telemetry Compass & Responsive Resize
+      // -----------------------------------------------------------------------
+      const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+
+      function updateTelemetryHUD() {
+        const normalizedYaw = (((cameraState.yaw % 360) + 360) % 360);
+        const cardinalIndex = Math.round(normalizedYaw / 45) % 8;
+        compassCardinal.textContent = CARDINALS[cardinalIndex];
+        compassNeedle.style.transform = `rotate(${-normalizedYaw}deg)`;
+
+        const displayYaw = Math.round(normalizedYaw);
+        const displayPitch = Math.round(cameraState.pitch);
+        telemetryReadout.textContent = `${displayYaw}° / ${displayPitch > 0 ? '+' : ''}${displayPitch}°`;
+      }
+
+      function onWindowResize() {
+        const width = container.clientWidth || window.innerWidth;
+        const height = container.clientHeight || window.innerHeight;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+      }
+      window.addEventListener('resize', onWindowResize);
+
+      // -----------------------------------------------------------------------
+      // 12. Main Render & Damped Spherical Interpolation Loop
+      // -----------------------------------------------------------------------
+      function animate() {
+        requestAnimationFrame(animate);
+
+        if (cameraState.autoRotate && !cameraState.isDragging && !cameraState.gyroEnabled) {
+          cameraState.targetYaw += config.autoRotateSpeed;
+        }
+
+        cameraState.yaw += (cameraState.targetYaw - cameraState.yaw) * config.dampingFactor;
+        cameraState.pitch += (cameraState.targetPitch - cameraState.pitch) * config.dampingFactor;
+        cameraState.fov += (cameraState.targetFov - cameraState.fov) * config.dampingFactor;
+
+        if (Math.abs(camera.fov - cameraState.fov) > 0.01) {
+          camera.fov = cameraState.fov;
+          camera.updateProjectionMatrix();
+        }
+
+        const phi = THREE.MathUtils.degToRad(90 - cameraState.pitch);
+        const theta = THREE.MathUtils.degToRad(cameraState.yaw);
+
+        lookTarget.x = 500 * Math.sin(phi) * Math.sin(theta);
+        lookTarget.y = 500 * Math.cos(phi);
+        lookTarget.z = -500 * Math.sin(phi) * Math.cos(theta);
+
+        camera.lookAt(lookTarget);
+        renderer.render(scene, camera);
+        updateTelemetryHUD();
+      }
+
+      // Initialize after window load
+      window.onload = function () {
+        onWindowResize();
+        loadInitialPanorama();
+        animate();
+      };
+    })();
+  </script>
+</body>
+</html>
