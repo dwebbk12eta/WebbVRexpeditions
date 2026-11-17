@@ -1212,11 +1212,38 @@
       const sendCatchup = () => {
         try {
           if (conn.open && !isStudioMode) {
+            // Strip massive raw data:image strings if present so WebRTC DataChannel never chokes
+            const lightweightTour = currentTour ? {
+              id: currentTour.id,
+              title: currentTour.title,
+              subject: currentTour.subject,
+              scenes: (currentTour.scenes || []).map(s => ({
+                id: s.id,
+                title: s.title,
+                panorama: (s.panorama && s.panorama.length > 500000) ? '' : s.panorama,
+                hotspots: (s.hotspots || []).map(h => ({
+                  id: h.id,
+                  title: h.title,
+                  text: h.text,
+                  phi: h.phi,
+                  theta: h.theta,
+                  image: (h.image && h.image.length > 250000) ? null : h.image
+                }))
+              }))
+            } : null;
+
+            const lightweightScene = currentScene ? {
+              id: currentScene.id,
+              title: currentScene.title,
+              panorama: currentScene.panorama,
+              hotspots: currentScene.hotspots || []
+            } : null;
+
             conn.send({
               type: 'TEACHER_HANDSHAKE_ACK',
               roomCode: currentRoomCode,
-              tour: currentTour,
-              scene: currentScene,
+              tour: lightweightTour,
+              scene: lightweightScene,
               sceneIndex: currentSceneIndex
             });
           }
@@ -1232,6 +1259,8 @@
         }
         studentConnections.set(peerId, conn);
         sendCatchup();
+        // Send a second catchup 800ms later in case the student's data listener attached slightly after open
+        setTimeout(sendCatchup, 800);
       });
 
       conn.on('data', (data) => {
@@ -1274,6 +1303,20 @@
           lastSeen: Date.now()
         });
         updateStudentsCountUI();
+
+        // Always respond to STUDENT_JOIN (or if student reports wrong sceneId) with current tour & scene
+        const targetConn = studentConnections.get(peerId);
+        if (targetConn && targetConn.open && (msg.type === 'STUDENT_JOIN' || (currentScene && msg.currentSceneId !== currentScene.id))) {
+          try {
+            targetConn.send({
+              type: 'TEACHER_HANDSHAKE_ACK',
+              roomCode: currentRoomCode,
+              tour: currentTour,
+              scene: currentScene,
+              sceneIndex: currentSceneIndex
+            });
+          } catch (e) {}
+        }
       } else if (msg.type === 'STUDENT_GAZE') {
         if (!connectedStudents.has(studentKey)) {
           connectedStudents.set(studentKey, {
