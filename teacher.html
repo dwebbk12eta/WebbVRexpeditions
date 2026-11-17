@@ -1068,9 +1068,25 @@
       clearTimeout(peerReconnectTimeout);
       clearInterval(peerKeepAliveInterval);
       peerReconnectAttempts = 0;
+
       if (teacherPeer) {
         try {
-// ... existing code ... -->
+          teacherPeer.removeAllListeners();
+          teacherPeer.disconnect();
+          teacherPeer.destroy();
+        } catch (e) {}
+        teacherPeer = null;
+      }
+
+      studentConnections.forEach((conn) => {
+        try { conn.close(); } catch (e) {}
+      });
+      studentConnections.clear();
+      connectedStudents.clear();
+      updateStudentsCountUI();
+      setSignalingUI('offline', 'Signal: Disabled (Studio)');
+    }
+
     function initTeacherPeerServer(roomCode, forceFresh = false) {
       if (isStudioMode) {
         stopTeacherBroadcast();
@@ -1080,7 +1096,6 @@
       clearTimeout(peerReconnectTimeout);
       clearInterval(peerKeepAliveInterval);
 
-      // If existing peer is active and healthy with the same room ID, don't destroy it unless forced
       const hostPeerId = `teacher-room-${roomCode}`;
       if (!forceFresh && teacherPeer && !teacherPeer.destroyed && !teacherPeer.disconnected && teacherPeer.id === hostPeerId) {
         setSignalingUI('live', `Signal: Live (${hostPeerId})`);
@@ -1100,7 +1115,30 @@
       updateStudentsCountUI();
 
       setSignalingUI('connecting', `Signal: Registering ${hostPeerId}...`);
-// ... existing code ... -->
+
+      let peerOptions = {
+        debug: 1,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun.services.mozilla.com' }
+          ]
+        }
+      };
+
+      if (networkConfig.mode === 'local') {
+        peerOptions = {
+          host: networkConfig.lanHost,
+          port: networkConfig.lanPort,
+          path: '/expeditions',
+          secure: false,
+          debug: 1
+        };
+        setSignalingUI('connecting', `Signal: LAN (${networkConfig.lanHost}:${networkConfig.lanPort})...`);
+      }
+
       try {
         teacherPeer = new Peer(hostPeerId, peerOptions);
 
@@ -1110,7 +1148,6 @@
           setSignalingUI('live', `Signal: Live (${id})`);
           showFloatingToast(`Classroom broadcast ready on Room ${roomCode}`);
 
-          // Keep signaling WebSocket alive against mobile Safari idle timeouts
           clearInterval(peerKeepAliveInterval);
           peerKeepAliveInterval = setInterval(() => {
             if (teacherPeer && !teacherPeer.destroyed && teacherPeer.disconnected && !isStudioMode) {
@@ -2646,6 +2683,42 @@
           }
         };
       }
+
+      // Font Size Adjuster in Teaching Guide Drawer
+      const FONT_SCALES = [85, 100, 115, 130, 150];
+      let currentFontScale = parseInt(localStorage.getItem('teacher_drawer_font_scale') || '100', 10);
+      if (!FONT_SCALES.includes(currentFontScale)) currentFontScale = 100;
+
+      function applyDrawerFontScale(scale) {
+        currentFontScale = scale;
+        localStorage.setItem('teacher_drawer_font_scale', scale);
+        const lblScale = document.getElementById('lbl-font-scale');
+        if (lblScale) lblScale.textContent = `${scale}%`;
+
+        const scriptEl = document.getElementById('drawer-scene-script');
+        if (scriptEl) {
+          scriptEl.style.fontSize = `${0.875 * (scale / 100)}rem`;
+          scriptEl.style.lineHeight = `${1.6 * (scale / 100)}rem`;
+        }
+
+        document.querySelectorAll('.drawer-target-notes').forEach(el => {
+          el.style.fontSize = `${0.75 * (scale / 100)}rem`;
+          el.style.lineHeight = `${1.45 * (scale / 100)}rem`;
+        });
+      }
+
+      const btnFontDec = document.getElementById('btn-font-decrease');
+      const btnFontInc = document.getElementById('btn-font-increase');
+      const btnFontReset = document.getElementById('btn-font-reset');
+
+      if (btnFontDec) {
+        btnFontDec.onclick = () => {
+          const currentIdx = FONT_SCALES.indexOf(currentFontScale);
+          if (currentIdx > 0) {
+            applyDrawerFontScale(FONT_SCALES[currentIdx - 1]);
+          }
+        };
+      }
       if (btnFontInc) {
         btnFontInc.onclick = () => {
           const currentIdx = FONT_SCALES.indexOf(currentFontScale);
@@ -3047,54 +3120,54 @@
 
         saveToursToStorage(true);
         document.getElementById('add-scene-modal').classList.add('hidden');
-      enterExpeditionWorkspace(currentTour);
-      loadScene(currentTour.scenes[currentSceneIndex], false);
-    };
+        enterExpeditionWorkspace(currentTour);
+        loadScene(currentTour.scenes[currentSceneIndex], false);
+      };
 
-    // Shared Helper to Open Add Hotspot Modal at Current Camera Center
-    function openAddHotspotModalAtCurrentView() {
-      editingHotspotId = null;
-      targetHotspotPhi = THREE.MathUtils.degToRad(90 - lat);
-      targetHotspotTheta = THREE.MathUtils.degToRad(lon);
+      // Shared Helper to Open Add Hotspot Modal at Current Camera Center
+      function openAddHotspotModalAtCurrentView() {
+        editingHotspotId = null;
+        targetHotspotPhi = THREE.MathUtils.degToRad(90 - lat);
+        targetHotspotTheta = THREE.MathUtils.degToRad(lon);
 
-      document.getElementById('modal-hotspot-heading').textContent = 'Add Curriculum Target Marker';
-      document.getElementById('btn-save-hotspot-text').textContent = 'Save Target Marker';
-      document.getElementById('input-hotspot-title').value = '';
-      document.getElementById('input-hotspot-text').value = '';
-      document.getElementById('input-hotspot-image-url').value = '';
-      stagedHotspotImageBase64 = null;
+        document.getElementById('modal-hotspot-heading').textContent = 'Add Curriculum Target Marker';
+        document.getElementById('btn-save-hotspot-text').textContent = 'Save Target Marker';
+        document.getElementById('input-hotspot-title').value = '';
+        document.getElementById('input-hotspot-text').value = '';
+        document.getElementById('input-hotspot-image-url').value = '';
+        stagedHotspotImageBase64 = null;
 
-      const repoBox = document.getElementById('hotspot-reposition-box');
-      if (repoBox) repoBox.classList.add('hidden');
-      const posHint = document.getElementById('hotspot-pos-hint-text');
-      if (posHint) posHint.textContent = 'Marker positioned at current crosshair camera center.';
+        const repoBox = document.getElementById('hotspot-reposition-box');
+        if (repoBox) repoBox.classList.add('hidden');
+        const posHint = document.getElementById('hotspot-pos-hint-text');
+        if (posHint) posHint.textContent = 'Marker positioned at current crosshair camera center.';
 
-      const previewBox = document.getElementById('hotspot-img-preview-box');
-      const previewImg = document.getElementById('hotspot-img-preview');
-      const uploadPrompt = document.getElementById('hotspot-img-upload-prompt');
-      const btnClearImg = document.getElementById('btn-clear-hotspot-img');
+        const previewBox = document.getElementById('hotspot-img-preview-box');
+        const previewImg = document.getElementById('hotspot-img-preview');
+        const uploadPrompt = document.getElementById('hotspot-img-upload-prompt');
+        const btnClearImg = document.getElementById('btn-clear-hotspot-img');
 
-      if (previewBox) previewBox.classList.add('hidden');
-      if (previewImg) previewImg.src = '';
-      if (uploadPrompt) uploadPrompt.classList.remove('hidden');
-      if (btnClearImg) btnClearImg.classList.add('hidden');
+        if (previewBox) previewBox.classList.add('hidden');
+        if (previewImg) previewImg.src = '';
+        if (uploadPrompt) uploadPrompt.classList.remove('hidden');
+        if (btnClearImg) btnClearImg.classList.add('hidden');
 
-      document.getElementById('add-hotspot-modal').classList.remove('hidden');
-    }
+        document.getElementById('add-hotspot-modal').classList.remove('hidden');
+      }
 
-    // Modal: Hotspot Placement Trigger from Bottom Action Bar
-    const btnStudioDrop = document.getElementById('btn-studio-drop-target');
-    if (btnStudioDrop) {
-      btnStudioDrop.onclick = () => openAddHotspotModalAtCurrentView();
-    }
+      // Modal: Hotspot Placement Trigger from Bottom Action Bar
+      const btnStudioDrop = document.getElementById('btn-studio-drop-target');
+      if (btnStudioDrop) {
+        btnStudioDrop.onclick = () => openAddHotspotModalAtCurrentView();
+      }
 
-    // Modal: Hotspot Placement Trigger from Teaching Guide Drawer
-    const btnDrawerAddTarget = document.getElementById('btn-drawer-add-target');
-    if (btnDrawerAddTarget) {
-      btnDrawerAddTarget.onclick = () => openAddHotspotModalAtCurrentView();
-    }
+      // Modal: Hotspot Placement Trigger from Teaching Guide Drawer
+      const btnDrawerAddTarget = document.getElementById('btn-drawer-add-target');
+      if (btnDrawerAddTarget) {
+        btnDrawerAddTarget.onclick = () => openAddHotspotModalAtCurrentView();
+      }
 
-    document.getElementById('btn-close-hotspot-modal').onclick = () => {
+      document.getElementById('btn-close-hotspot-modal').onclick = () => {
         document.getElementById('add-hotspot-modal').classList.add('hidden');
         editingHotspotId = null;
       };
