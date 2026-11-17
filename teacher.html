@@ -205,10 +205,10 @@
         </div>
 
         <!-- WebRTC Live Signaling Indicator Pill -->
-        <div id="hud-signal-badge" class="bg-slate-900/90 border border-slate-700/80 text-slate-400 px-2 py-1 rounded-xl text-[11px] font-mono flex items-center gap-1.5 backdrop-blur-md">
+        <button id="hud-signal-badge" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-400 px-2 py-1 rounded-xl text-[11px] font-mono flex items-center gap-1.5 backdrop-blur-md transition active:scale-95 cursor-pointer" title="Click to force-reset classroom signal">
           <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse" id="hud-signal-dot"></span>
           <span id="hud-signal-text" class="hidden md:inline">Signal: Initializing...</span>
-        </div>
+        </button>
 
         <!-- iPad Keep-Awake Status Pill -->
         <div id="hud-wake-badge" class="bg-slate-900/90 border border-slate-800 text-slate-400 px-2 py-1 rounded-xl text-[11px] font-mono flex items-center gap-1.5 backdrop-blur-md" title="Screen Sleep Prevention">
@@ -1046,6 +1046,8 @@
        WebRTC PeerJS & Broadcast Networking (Teacher Multi-Client Host)
        --------------------------------------------------------- */
     let peerReconnectTimeout = null;
+    let peerReconnectAttempts = 0;
+    let peerKeepAliveInterval = null;
 
     function setSignalingUI(state, text) {
       const dot = document.getElementById('hud-signal-dot');
@@ -1064,56 +1066,30 @@
 
     function stopTeacherBroadcast() {
       clearTimeout(peerReconnectTimeout);
+      clearInterval(peerKeepAliveInterval);
+      peerReconnectAttempts = 0;
       if (teacherPeer) {
         try {
-          studentConnections.forEach((conn) => {
-            if (conn && conn.open) {
-              try {
-                conn.send({ type: 'TEACHER_DISCONNECTED', message: 'Teacher switched to Studio editing mode.' });
-                conn.close();
-              } catch (e) {}
-            }
-          });
-          teacherPeer.disconnect();
-          teacherPeer.destroy();
-        } catch (e) {}
-        teacherPeer = null;
-      }
-      studentConnections.clear();
-      connectedStudents.clear();
-      updateStudentsCountUI();
-      setSignalingUI('disabled', 'Broadcasting: Disabled (Studio Mode)');
-
-      const hudRoomCode = document.getElementById('hud-room-code');
-      const hudRoomBadge = document.getElementById('hud-room-badge');
-      const hudRoomIcon = document.getElementById('hud-room-icon');
-      if (hudRoomCode) hudRoomCode.textContent = 'STUDIO (OFFLINE)';
-      if (hudRoomBadge) hudRoomBadge.className = 'bg-amber-950/80 border border-amber-500/40 text-amber-300 px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 backdrop-blur-md';
-      if (hudRoomIcon) hudRoomIcon.className = 'fa-solid fa-eye-slash text-amber-400 text-[10px]';
-
-      const drawerCodeDesc = document.getElementById('drawer-code-description');
-      if (drawerCodeDesc) {
-        drawerCodeDesc.innerHTML = `<span class="text-amber-400 font-semibold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Broadcasting is paused while editing in Studio.</span>`;
-      }
-    }
-
-    function initTeacherPeerServer(roomCode) {
+// ... existing code ... -->
+    function initTeacherPeerServer(roomCode, forceFresh = false) {
       if (isStudioMode) {
         stopTeacherBroadcast();
         return;
       }
 
       clearTimeout(peerReconnectTimeout);
+      clearInterval(peerKeepAliveInterval);
 
-      // If existing peer is active and healthy with the same room ID, don't destroy it
+      // If existing peer is active and healthy with the same room ID, don't destroy it unless forced
       const hostPeerId = `teacher-room-${roomCode}`;
-      if (teacherPeer && !teacherPeer.destroyed && !teacherPeer.disconnected && teacherPeer.id === hostPeerId) {
+      if (!forceFresh && teacherPeer && !teacherPeer.destroyed && !teacherPeer.disconnected && teacherPeer.id === hostPeerId) {
         setSignalingUI('live', `Signal: Live (${hostPeerId})`);
         return;
       }
 
       if (teacherPeer) {
         try {
+          teacherPeer.removeAllListeners();
           teacherPeer.disconnect();
           teacherPeer.destroy();
         } catch (e) {}
@@ -1124,49 +1100,23 @@
       updateStudentsCountUI();
 
       setSignalingUI('connecting', `Signal: Registering ${hostPeerId}...`);
-
-      const hudRoomCode = document.getElementById('hud-room-code');
-      const hudRoomBadge = document.getElementById('hud-room-badge');
-      const hudRoomIcon = document.getElementById('hud-room-icon');
-      if (hudRoomCode) hudRoomCode.textContent = `ROOM ${roomCode}`;
-      if (hudRoomBadge) hudRoomBadge.className = 'bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 backdrop-blur-md';
-      if (hudRoomIcon) hudRoomIcon.className = 'fa-solid fa-tower-broadcast text-emerald-400 text-[10px]';
-
-      const drawerCodeDesc = document.getElementById('drawer-code-description');
-      if (drawerCodeDesc) {
-        drawerCodeDesc.innerHTML = `Students join via the Student Viewer using room code <strong class="text-indigo-300 font-mono">${roomCode}</strong>.`;
-      }
-
-      let peerOptions = {
-        debug: 1,
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun.services.mozilla.com' }
-          ]
-        }
-      };
-
-      if (networkConfig.mode === 'local') {
-        peerOptions = {
-          host: networkConfig.lanHost,
-          port: networkConfig.lanPort,
-          path: '/expeditions',
-          secure: false,
-          debug: 1
-        };
-        setSignalingUI('connecting', `Signal: LAN (${networkConfig.lanHost}:${networkConfig.lanPort})...`);
-      }
-
+// ... existing code ... -->
       try {
         teacherPeer = new Peer(hostPeerId, peerOptions);
 
         teacherPeer.on('open', (id) => {
           clearTimeout(peerReconnectTimeout);
+          peerReconnectAttempts = 0;
           setSignalingUI('live', `Signal: Live (${id})`);
           showFloatingToast(`Classroom broadcast ready on Room ${roomCode}`);
+
+          // Keep signaling WebSocket alive against mobile Safari idle timeouts
+          clearInterval(peerKeepAliveInterval);
+          peerKeepAliveInterval = setInterval(() => {
+            if (teacherPeer && !teacherPeer.destroyed && teacherPeer.disconnected && !isStudioMode) {
+              initTeacherPeerServer(roomCode, true);
+            }
+          }, 20000);
         });
 
         teacherPeer.on('connection', (conn) => {
@@ -1179,37 +1129,35 @@
 
         teacherPeer.on('error', (err) => {
           console.warn('Teacher peer error:', err);
+          clearTimeout(peerReconnectTimeout);
+          peerReconnectAttempts++;
+
+          // Exponential backoff capped at 8 seconds to avoid hammering the broker
+          const retryDelay = Math.min(2000 * peerReconnectAttempts, 8000);
+
           if (err && err.type === 'unavailable-id') {
-            // Previous socket lock detected on relay server; purge and force fresh acquisition
             setSignalingUI('connecting', 'Signal: Clearing stale room lock...');
-            clearTimeout(peerReconnectTimeout);
             peerReconnectTimeout = setTimeout(() => {
-              if (teacherPeer) {
-                try { teacherPeer.destroy(); } catch (e) {}
-                teacherPeer = null;
-              }
-              initTeacherPeerServer(roomCode);
-            }, 1800);
+              initTeacherPeerServer(roomCode, true);
+            }, retryDelay);
+          } else if (err && (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed')) {
+            setSignalingUI('connecting', `Signal: Broker busy, retrying (${peerReconnectAttempts})...`);
+            peerReconnectTimeout = setTimeout(() => {
+              initTeacherPeerServer(roomCode, true);
+            }, retryDelay);
           } else {
-            setSignalingUI('error', `Signal: ${err.type || 'Offline'}`);
+            setSignalingUI('error', `Signal: ${err.type || 'Offline'} (Tap to retry)`);
           }
         });
 
         teacherPeer.on('disconnected', () => {
           if (!isStudioMode) {
-            setSignalingUI('connecting', 'Signal: Reconnecting relay...');
+            setSignalingUI('connecting', 'Signal: Rebuilding connection...');
             clearTimeout(peerReconnectTimeout);
+            // Destroy and rebuild cleanly instead of calling .reconnect() which loops on dead sockets
             peerReconnectTimeout = setTimeout(() => {
-              if (teacherPeer && !teacherPeer.destroyed) {
-                try {
-                  teacherPeer.reconnect();
-                } catch (e) {
-                  initTeacherPeerServer(roomCode);
-                }
-              } else {
-                initTeacherPeerServer(roomCode);
-              }
-            }, 2000);
+              initTeacherPeerServer(roomCode, true);
+            }, 2500);
           }
         });
       } catch (e) {
@@ -2688,58 +2636,13 @@
         };
       }
 
-      // Edit Scene Handlers
-      const btnStudioEdit = document.getElementById('btn-studio-edit-scene');
-      const btnDrawerEdit = document.getElementById('btn-drawer-edit-scene');
-      if (btnStudioEdit) btnStudioEdit.onclick = () => openEditSceneModal();
-      if (btnDrawerEdit) btnDrawerEdit.onclick = () => openEditSceneModal();
-
-      // Delete Scene Handlers
-      const btnStudioDelScene = document.getElementById('btn-studio-delete-scene');
-      const btnDrawerDelScene = document.getElementById('btn-drawer-delete-scene');
-      if (btnStudioDelScene) btnStudioDelScene.onclick = () => promptDeleteCurrentScene();
-      if (btnDrawerDelScene) btnDrawerDelScene.onclick = () => promptDeleteCurrentScene();
-
-      // Delete Tour Handler
-      const btnStudioDelTour = document.getElementById('btn-studio-delete-tour');
-      if (btnStudioDelTour) {
-        btnStudioDelTour.onclick = () => {
-          if (currentTour) promptDeleteTour(currentTour);
-        };
-      }
-
-      // Font Size Adjuster in Teaching Guide Drawer
-      const FONT_SCALES = [85, 100, 115, 130, 150];
-      let currentFontScale = parseInt(localStorage.getItem('teacher_drawer_font_scale') || '100', 10);
-      if (!FONT_SCALES.includes(currentFontScale)) currentFontScale = 100;
-
-      function applyDrawerFontScale(scale) {
-        currentFontScale = scale;
-        localStorage.setItem('teacher_drawer_font_scale', scale);
-        const lblScale = document.getElementById('lbl-font-scale');
-        if (lblScale) lblScale.textContent = `${scale}%`;
-
-        const scriptEl = document.getElementById('drawer-scene-script');
-        if (scriptEl) {
-          scriptEl.style.fontSize = `${0.875 * (scale / 100)}rem`;
-          scriptEl.style.lineHeight = `${1.6 * (scale / 100)}rem`;
-        }
-
-        document.querySelectorAll('.drawer-target-notes').forEach(el => {
-          el.style.fontSize = `${0.75 * (scale / 100)}rem`;
-          el.style.lineHeight = `${1.45 * (scale / 100)}rem`;
-        });
-      }
-
-      const btnFontDec = document.getElementById('btn-font-decrease');
-      const btnFontInc = document.getElementById('btn-font-increase');
-      const btnFontReset = document.getElementById('btn-font-reset');
-
-      if (btnFontDec) {
-        btnFontDec.onclick = () => {
-          const currentIdx = FONT_SCALES.indexOf(currentFontScale);
-          if (currentIdx > 0) {
-            applyDrawerFontScale(FONT_SCALES[currentIdx - 1]);
+      // Allow tapping the Signal pill to force a fresh connection immediately
+      const hudSignalBadge = document.getElementById('hud-signal-badge');
+      if (hudSignalBadge) {
+        hudSignalBadge.onclick = () => {
+          if (!isStudioMode) {
+            showFloatingToast('Resetting classroom broadcast signal...');
+            initTeacherPeerServer(currentRoomCode, true);
           }
         };
       }
