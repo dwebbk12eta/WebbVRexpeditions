@@ -1153,17 +1153,17 @@
 
       safeSetText('hud-room-code', `ROOM ${currentRoomCode}`);
 
-      // If no scene has been received from the teacher yet, load the default starter scene
       if (!currentScene) {
-        loadScene(DEFAULT_PRESET_TOUR.scenes[0]);
+        safeSetText('hud-tour-title', 'Syncing with Teacher...');
+        safeSetText('hud-scene-title', 'Loading active tour...');
       }
 
       clearInterval(heartbeatInterval);
-      // Relaxed heartbeat to prevent flooding the teacher socket
-      heartbeatInterval = setInterval(sendHeartbeat, 8000);
+      // Relaxed heartbeat to prevent flooding the teacher socket, includes active scene ID for self-healing sync
+      heartbeatInterval = setInterval(sendHeartbeat, 5000);
       sendHeartbeat();
-
-      clearInterval(gazeBroadcastInterval);
+      // Send a quick follow-up join ping 600ms after open to guarantee teacher responds with active tour
+      setTimeout(sendHeartbeat, 600);
       // Reduced broadcast frequency from 66ms (15Hz) to 125ms (8Hz) for smoother mesh throughput
       gazeBroadcastInterval = setInterval(sendGazeTelemetry, 125);
 
@@ -1175,7 +1175,8 @@
         type: 'STUDENT_JOIN',
         roomCode: currentRoomCode,
         studentId: studentId,
-        studentName: studentName || 'Student'
+        studentName: studentName || 'Student',
+        currentSceneId: currentScene ? currentScene.id : null
       };
 
       if (teacherConn && teacherConn.open) {
