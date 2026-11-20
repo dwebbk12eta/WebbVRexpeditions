@@ -278,6 +278,22 @@
       <span id="hud-interaction-hint">Double-click anywhere to spotlight a focal point for students</span>
     </div>
 
+    <!-- Teacher In-View Artifact Image Popup (Matches Student View) -->
+    <div id="teacher-artifact-popup" class="pointer-events-auto fixed bottom-20 left-5 z-20 max-w-xs sm:max-w-sm bg-slate-950/90 border border-amber-500/50 rounded-2xl p-2.5 shadow-2xl backdrop-blur-xl transition-all duration-300 hidden">
+      <div class="flex items-center justify-between gap-2 pb-1.5 px-1">
+        <span id="teacher-artifact-title" class="text-xs font-bold text-amber-300 truncate flex items-center gap-1.5">
+          <i class="fa-solid fa-image text-[10px]"></i>
+          <span>Artifact Photo</span>
+        </span>
+        <button id="btn-close-teacher-artifact" class="text-slate-400 hover:text-white w-6 h-6 rounded-lg bg-slate-900 flex items-center justify-center text-xs transition" title="Hide Photo">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="rounded-xl overflow-hidden bg-slate-900 border border-slate-800 flex items-center justify-center">
+        <img id="teacher-artifact-img" src="" alt="Spotlit Artifact" class="max-w-full max-h-56 object-contain">
+      </div>
+    </div>
+
     <!-- Bottom Floating Action Bar -->
     <footer class="pointer-events-auto fixed bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-slate-950/90 border border-slate-800/90 p-1.5 rounded-2xl shadow-2xl backdrop-blur-xl">
       <button id="btn-prev-scene" class="bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white w-9 h-9 rounded-xl flex items-center justify-center transition active:scale-95 disabled:opacity-30 disabled:pointer-events-none" title="Previous Scene">
@@ -1303,6 +1319,7 @@
         hotspots: (sceneObj.hotspots || []).map(h => ({
           id: h.id,
           title: h.title,
+          image: h.image || null,
           phi: h.phi,
           theta: h.theta
         }))
@@ -2166,6 +2183,21 @@
       const clearBtn = document.getElementById('btn-clear-impromptu');
       if (clearBtn) clearBtn.classList.remove('hidden');
 
+      // Show or hide the artifact photo popup on the teacher screen
+      const popup = document.getElementById('teacher-artifact-popup');
+      const popupImg = document.getElementById('teacher-artifact-img');
+      const popupTitle = document.getElementById('teacher-artifact-title');
+      if (popup && popupImg && popupTitle) {
+        if (h.image) {
+          popupImg.src = h.image;
+          popupTitle.innerHTML = `<i class="fa-solid fa-image text-[10px]"></i><span>${escapeHtml(h.title)}</span>`;
+          popup.classList.remove('hidden');
+        } else {
+          popup.classList.add('hidden');
+          popupImg.src = '';
+        }
+      }
+
       broadcastTeacherAction({
         type: 'TEACHER_SPOTLIGHT',
         roomCode: currentRoomCode,
@@ -2182,6 +2214,12 @@
       clearImpromptuSpotlight(false);
       const clearBtn = document.getElementById('btn-clear-impromptu');
       if (clearBtn) clearBtn.classList.add('hidden');
+
+      const popup = document.getElementById('teacher-artifact-popup');
+      const popupImg = document.getElementById('teacher-artifact-img');
+      if (popup) popup.classList.add('hidden');
+      if (popupImg) popupImg.src = '';
+
       showFloatingToast('Cleared spotlight focus for all students');
 
       if (broadcast) {
@@ -2739,6 +2777,9 @@
 
       renderHotspots(sceneData.hotspots || []);
       renderDrawerTargetsList(sceneData.hotspots || []);
+      clearImpromptuSpotlight(false);
+      const popup = document.getElementById('teacher-artifact-popup');
+      if (popup) popup.classList.add('hidden');
       // Broadcast scene change to all connected student devices using lean payload
       if (broadcast && !isStudioMode) {
         studentLastSyncMap.clear();
@@ -3507,6 +3548,14 @@
       const btnClearImpromptu = document.getElementById('btn-clear-impromptu');
       if (btnClearImpromptu) {
         btnClearImpromptu.onclick = () => dismissAllSpotlights(true);
+      }
+
+      const btnCloseTeacherArtifact = document.getElementById('btn-close-teacher-artifact');
+      if (btnCloseTeacherArtifact) {
+        btnCloseTeacherArtifact.onclick = () => {
+          const popup = document.getElementById('teacher-artifact-popup');
+          if (popup) popup.classList.add('hidden');
+        };
       }
     }
 
