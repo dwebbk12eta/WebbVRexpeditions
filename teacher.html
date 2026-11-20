@@ -966,6 +966,7 @@
     /* Networking - Multi-Client WebRTC Pool */
     let teacherPeer = null;
     const studentConnections = new Map();
+    const studentLastSyncMap = new Map();
     let syncChannel = null;
     try {
       if (typeof BroadcastChannel !== 'undefined') {
@@ -1286,9 +1287,90 @@
 
     function removeStudentSession(peerId) {
       studentConnections.delete(peerId);
+      studentLastSyncMap.delete(peerId);
       connectedStudents.delete(peerId);
       removeStudentGaze(peerId);
       updateStudentsCountUI();
+    }
+
+    /* Builds an ultra-lightweight payload containing ONLY what the student headset needs */
+    function buildLeanStudentScene(sceneObj) {
+      if (!sceneObj) return null;
+      return {
+        id: sceneObj.id,
+        title: sceneObj.title,
+        panorama: sceneObj.panorama || '',
+        hotspots: (sceneObj.hotspots || []).map(h => ({
+          id: h.id,
+          title: h.title,
+          phi: h.phi,
+          theta: h.theta
+        }))
+      };
+    }
+
+    function buildLeanStudentTour(tourObj) {
+      if (!tourObj) return null;
+      return {
+        id: tourObj.id,
+        title: tourObj.title
+      };
+    }
+
+    function sendSceneSyncToPeer(conn, peerId, force = false) {
+      if (!conn || !conn.open || isStudioMode) return;
+      const now = Date.now();
+      const lastSent = studentLastSyncMap.get(peerId) || 0;
+
+      // Prevent flooding the same student if they are still downloading a large image
+      if (!force && (now - lastSent) < 8000) return;
+      studentLastSyncMap.set(peerId, now);
+
+      try {
+        conn.send({
+          type: 'TEACHER_HANDSHAKE_ACK',
+          roomCode: currentRoomCode,
+          tour: buildLeanStudentTour(currentTour),
+          scene: buildLeanStudentScene(currentScene),
+          sceneIndex: currentSceneIndex
+        });
+      } catch (err) {
+        console.warn('Failed to send lean sync to student:', peerId, err);
+      }
+    }
+
+    function setupIncomingStudentConnection(conn) {
+      if (!conn) return;
+      const peerId = conn.peer;
+
+      conn.on('open', () => {
+        if (isStudioMode) {
+          conn.close();
+          return;
+        }
+        studentConnections.set(peerId, conn);
+        sendSceneSyncToPeer(conn, peerId, true);
+      });
+
+      conn.on('data', (data) => {
+        if (!isStudioMode) {
+          handleIncomingStudentMessage(data, conn.peer);
+        }
+      });
+
+      conn.on('close', () => {
+        removeStudentSession(peerId);
+      });
+
+      conn.on('error', (err) => {
+        console.warn('Student connection error:', peerId, err);
+        removeStudentSession(peerId);
+      });
+
+      if (conn.open) {
+        studentConnections.set(peerId, conn);
+        sendSceneSyncToPeer(conn, peerId, true);
+      }
     }
 
     function handleIncomingStudentMessage(msg, peerId) {
@@ -1304,18 +1386,12 @@
         });
         updateStudentsCountUI();
 
-        // Always respond to STUDENT_JOIN (or if student reports wrong sceneId) with current tour & scene
         const targetConn = studentConnections.get(peerId);
-        if (targetConn && targetConn.open && (msg.type === 'STUDENT_JOIN' || (currentScene && msg.currentSceneId !== currentScene.id))) {
-          try {
-            targetConn.send({
-              type: 'TEACHER_HANDSHAKE_ACK',
-              roomCode: currentRoomCode,
-              tour: currentTour,
-              scene: currentScene,
-              sceneIndex: currentSceneIndex
-            });
-          } catch (e) {}
+        if (targetConn && targetConn.open) {
+          const needsScene = !msg.currentSceneId || (currentScene && msg.currentSceneId !== currentScene.id);
+          if (msg.type === 'STUDENT_JOIN' || needsScene) {
+            sendSceneSyncToPeer(targetConn, peerId, msg.type === 'STUDENT_JOIN');
+          }
         }
       } else if (msg.type === 'STUDENT_GAZE') {
         if (!connectedStudents.has(studentKey)) {
@@ -2534,11 +2610,14 @@
 
       showFloatingToast(`Switched expedition to: ${currentTour.title}`);
 
+      // Reset sync cooldowns so all students immediately accept the new tour
+      studentLastSyncMap.clear();
+
       broadcastTeacherAction({
         type: 'TEACHER_CHANGE_TOUR',
         roomCode: currentRoomCode,
-        tour: currentTour,
-        scene: currentScene,
+        tour: buildLeanStudentTour(currentTour),
+        scene: buildLeanStudentScene(currentScene),
         sceneIndex: 0
       });
 
@@ -2616,14 +2695,14 @@
 
       renderHotspots(sceneData.hotspots || []);
       renderDrawerTargetsList(sceneData.hotspots || []);
-      clearImpromptuSpotlight(false);
-
+      // Broadcast scene change to all connected student devices using lean payload
       if (broadcast && !isStudioMode) {
+        studentLastSyncMap.clear();
         broadcastTeacherAction({
           type: 'TEACHER_CHANGE_SCENE',
           roomCode: currentRoomCode,
           sceneIndex: currentSceneIndex,
-          sceneData: sceneData
+          sceneData: buildLeanStudentScene(sceneData)
         });
       }
     }
