@@ -615,7 +615,7 @@
 
         const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
         lat = THREE.MathUtils.radToDeg(Math.asin(Math.max(-1, Math.min(1, forward.y))));
-        lon = THREE.MathUtils.radToDeg(Math.atan2(forward.x, forward.z)) + 180;
+        lon = THREE.MathUtils.radToDeg(Math.atan2(forward.x, forward.z));
       } else {
         lat = Math.max(-85, Math.min(85, lat));
         const phi = THREE.MathUtils.degToRad(90 - lat);
