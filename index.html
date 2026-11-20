@@ -413,6 +413,7 @@
     let isConnectedToTeacher = false;
     let currentTour = null;
     let currentScene = null;
+    let loadingSceneId = null;
     let activeSpotlightCoords = null;
     let activeSpotlightData = null;
     let isVrSplitMode = false;
@@ -843,6 +844,7 @@
     function loadScene(sceneData) {
       if (!sceneData) return;
       currentScene = sceneData;
+      loadingSceneId = sceneData.id;
 
       safeSetText('hud-scene-title', `Scene: ${sceneData.title || 'Untitled'}`);
 
@@ -850,6 +852,7 @@
         textureLoader.load(
           sceneData.panorama,
           (tex) => {
+            loadingSceneId = null;
             tex.colorSpace = THREE.SRGBColorSpace || undefined;
             if (sphereMesh && sphereMesh.material) {
               sphereMesh.material.map = tex;
@@ -859,6 +862,7 @@
           },
           undefined,
           (err) => {
+            loadingSceneId = null;
             console.warn('Panorama image failed to load, falling back to procedural sky:', err);
             if (sphereMesh && sphereMesh.material) {
               sphereMesh.material.map = createProceduralPanoTexture();
@@ -866,6 +870,8 @@
             }
           }
         );
+      } else {
+        loadingSceneId = null;
       }
 
       renderHotspots(sceneData.hotspots || []);
@@ -1159,24 +1165,23 @@
       }
 
       clearInterval(heartbeatInterval);
-      // Relaxed heartbeat to prevent flooding the teacher socket, includes active scene ID for self-healing sync
-      heartbeatInterval = setInterval(sendHeartbeat, 5000);
-      sendHeartbeat();
-      // Send a quick follow-up join ping 600ms after open to guarantee teacher responds with active tour
-      setTimeout(sendHeartbeat, 600);
-      // Reduced broadcast frequency from 66ms (15Hz) to 125ms (8Hz) for smoother mesh throughput
-      gazeBroadcastInterval = setInterval(sendGazeTelemetry, 125);
+      // Lightweight heartbeat every 8 seconds so WebRTC data channels stay completely clear for instant spotlights
+      heartbeatInterval = setInterval(() => sendHeartbeat('STUDENT_HEARTBEAT'), 8000);
+      sendHeartbeat('STUDENT_JOIN');
+      // Reduced broadcast frequency to 150ms with 1.5° deadband for zero mesh congestion
+      gazeBroadcastInterval = setInterval(sendGazeTelemetry, 150);
 
       showStudentToast(`Connected to Room ${currentRoomCode}!`);
     }
 
-    function sendHeartbeat() {
+    function sendHeartbeat(msgType = 'STUDENT_HEARTBEAT') {
+      const activeId = currentScene ? currentScene.id : loadingSceneId;
       const payload = {
-        type: 'STUDENT_JOIN',
+        type: msgType,
         roomCode: currentRoomCode,
         studentId: studentId,
         studentName: studentName || 'Student',
-        currentSceneId: currentScene ? currentScene.id : null
+        currentSceneId: activeId
       };
 
       if (teacherConn && teacherConn.open) {
@@ -1193,8 +1198,8 @@
       const roundedLon = Math.round(lon * 10) / 10;
       const roundedLat = Math.round(lat * 10) / 10;
 
-      // Deadband filter: Only transmit if rotation angle shifted by more than 1.2 degrees
-      if (lastSentLon !== null && Math.abs(roundedLon - lastSentLon) < 1.2 && Math.abs(roundedLat - lastSentLat) < 1.2) {
+      // Deadband filter: Only transmit if rotation angle shifted by more than 1.5 degrees
+      if (lastSentLon !== null && Math.abs(roundedLon - lastSentLon) < 1.5 && Math.abs(roundedLat - lastSentLat) < 1.5) {
         return;
       }
 
