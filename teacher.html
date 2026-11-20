@@ -1437,11 +1437,27 @@
 
     async function initToursState() {
       try {
-        const cached = localStorage.getItem('teacher_saved_tours');
-        if (cached) {
-          allTours = JSON.parse(cached);
+        const indexRaw = localStorage.getItem('teacher_tours_index');
+        if (indexRaw) {
+          const ids = JSON.parse(indexRaw);
+          const loaded = [];
+          ids.forEach(id => {
+            const itemRaw = localStorage.getItem(`tour_item_${id}`);
+            if (itemRaw) {
+              try { loaded.push(JSON.parse(itemRaw)); } catch (e) {}
+            }
+          });
+          allTours = loaded.length > 0 ? loaded : JSON.parse(JSON.stringify(DEFAULT_PRESET_TOURS));
         } else {
-          allTours = JSON.parse(JSON.stringify(DEFAULT_PRESET_TOURS));
+          // Migrate legacy single-key cache to per-tour keys automatically
+          const legacyCached = localStorage.getItem('teacher_saved_tours');
+          if (legacyCached) {
+            allTours = JSON.parse(legacyCached);
+            saveAllTourKeysIndividually();
+            localStorage.removeItem('teacher_saved_tours');
+          } else {
+            allTours = JSON.parse(JSON.stringify(DEFAULT_PRESET_TOURS));
+          }
         }
       } catch (e) {
         allTours = JSON.parse(JSON.stringify(DEFAULT_PRESET_TOURS));
@@ -1454,11 +1470,37 @@
       renderToursGrid();
     }
 
-    function saveToursToStorage(syncCloud = true) {
+    function saveSingleTourToLocalCache(tour) {
+      if (!tour || !tour.id) return;
       try {
-        localStorage.setItem('teacher_saved_tours', JSON.stringify(allTours));
+        localStorage.setItem(`tour_item_${tour.id}`, JSON.stringify(tour));
+        const ids = allTours.map(t => t.id);
+        localStorage.setItem('teacher_tours_index', JSON.stringify(ids));
       } catch (err) {
-        console.warn('LocalStorage limit reached:', err);
+        console.warn('LocalStorage quota warning for single tour:', tour.id, err);
+      }
+    }
+
+    function saveAllTourKeysIndividually() {
+      try {
+        const ids = [];
+        allTours.forEach(t => {
+          if (t && t.id) {
+            ids.push(t.id);
+            localStorage.setItem(`tour_item_${t.id}`, JSON.stringify(t));
+          }
+        });
+        localStorage.setItem('teacher_tours_index', JSON.stringify(ids));
+      } catch (err) {
+        console.warn('LocalStorage individual save warning:', err);
+      }
+    }
+
+    function saveToursToStorage(syncCloud = true) {
+      if (currentTour) {
+        saveSingleTourToLocalCache(currentTour);
+      } else {
+        saveAllTourKeysIndividually();
       }
 
       if (syncCloud && currentTour) {
@@ -1534,9 +1576,7 @@
       cloudTours.forEach(ct => mergedMap.set(ct.id, ct));
 
       allTours = Array.from(mergedMap.values());
-      try {
-        localStorage.setItem('teacher_saved_tours', JSON.stringify(allTours));
-      } catch (e) {}
+      saveAllTourKeysIndividually();
 
       renderToursGrid();
     }
@@ -1544,8 +1584,8 @@
     async function saveTourToGoogleDrive(tour) {
       if (!tour) return;
       isDriveSyncing = true;
-      updateCloudStatusUI('syncing', 'Saving to Drive...');
-      showFloatingToast('Syncing tour to Google Drive...');
+      updateCloudStatusUI('syncing', 'Saving tour file...');
+      showFloatingToast(`Saving "${tour.title}" to Drive...`);
 
       try {
         const payload = {
@@ -1567,9 +1607,10 @@
             const idx = allTours.findIndex(t => t.id === data.tour.id);
             if (idx >= 0) allTours[idx] = data.tour;
             currentTour = data.tour;
+            saveSingleTourToLocalCache(data.tour);
           }
           updateCloudStatusUI('connected', 'Saved to Drive');
-          showFloatingToast('Expedition saved to Google Drive!');
+          showFloatingToast('Individual tour saved & images linked!');
         } else {
           updateCloudStatusUI('offline', 'Local Cache (Sync Pending)');
         }
@@ -2519,7 +2560,10 @@
 
     async function executeDeleteTour(tour) {
       allTours = allTours.filter(t => t.id !== tour.id);
-      saveToursToStorage(false);
+      try {
+        localStorage.removeItem(`tour_item_${tour.id}`);
+        localStorage.setItem('teacher_tours_index', JSON.stringify(allTours.map(t => t.id)));
+      } catch (e) {}
 
       showFloatingToast(`Deleted tour "${tour.title}"`);
 
