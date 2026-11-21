@@ -279,18 +279,18 @@
     </div>
 
     <!-- Teacher In-View Artifact Image Popup (Matches Student View) -->
-    <div id="teacher-artifact-popup" class="pointer-events-auto fixed bottom-20 left-5 z-20 max-w-xs sm:max-w-sm bg-slate-950/90 border border-amber-500/50 rounded-2xl p-2.5 shadow-2xl backdrop-blur-xl transition-all duration-300 hidden">
-      <div class="flex items-center justify-between gap-2 pb-1.5 px-1">
-        <span id="teacher-artifact-title" class="text-xs font-bold text-amber-300 truncate flex items-center gap-1.5">
-          <i class="fa-solid fa-image text-[10px]"></i>
+    <div id="teacher-artifact-popup" class="pointer-events-auto fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 max-w-[85vw] sm:max-w-md bg-slate-950/90 border border-amber-500/60 rounded-2xl p-3 shadow-2xl backdrop-blur-xl transition-all duration-300 hidden">
+      <div class="flex items-center justify-between gap-3 pb-2 px-1">
+        <span id="teacher-artifact-title" class="text-xs sm:text-sm font-bold text-amber-300 truncate flex items-center gap-1.5">
+          <i class="fa-solid fa-image text-xs"></i>
           <span>Artifact Photo</span>
         </span>
-        <button id="btn-close-teacher-artifact" class="text-slate-400 hover:text-white w-6 h-6 rounded-lg bg-slate-900 flex items-center justify-center text-xs transition" title="Hide Photo">
+        <button id="btn-close-teacher-artifact" class="text-slate-300 hover:text-white w-7 h-7 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-xs transition active:scale-95" title="Hide Photo">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
       <div class="rounded-xl overflow-hidden bg-slate-900 border border-slate-800 flex items-center justify-center">
-        <img id="teacher-artifact-img" src="" alt="Spotlit Artifact" class="max-w-full max-h-56 object-contain">
+        <img id="teacher-artifact-img" src="" alt="Spotlit Artifact" class="max-w-full max-h-[55vh] object-contain">
       </div>
     </div>
 
@@ -1722,6 +1722,8 @@
 
     function setupCanvasInteractions(container) {
       let lastTap = 0;
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
 
       container.addEventListener('pointerdown', (e) => {
         isUserInteracting = true;
@@ -1729,6 +1731,20 @@
         onPointerDownPointerY = e.clientY;
         onPointerDownLon = lon;
         onPointerDownLat = lat;
+
+        // Check if teacher tapped directly on a 3D hotspot marker sprite
+        if (camera && hotspotGroup && hotspotGroup.children.length > 0) {
+          const rect = container.getBoundingClientRect();
+          pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+          pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+          raycaster.setFromCamera(pointer, camera);
+          const intersects = raycaster.intersectObjects(hotspotGroup.children, false);
+          if (intersects.length > 0 && intersects[0].object && intersects[0].object.userData) {
+            isUserInteracting = false;
+            spotlightHotspot(intersects[0].object.userData);
+            return;
+          }
+        }
 
         const now = Date.now();
         if (now - lastTap < 350) {
@@ -2160,16 +2176,7 @@
         saveToursToStorage(true);
         renderHotspots(currentScene.hotspots);
         renderDrawerTargetsList(currentScene.hotspots);
-        showFloatingToast(`Deleted target "${h.title}"`);
-      };
-
-      document.getElementById('delete-modal-title').textContent = 'Delete Target Marker?';
-      document.getElementById('delete-modal-desc').textContent = `Are you sure you want to remove "${h.title}" from this scene?`;
-      document.getElementById('btn-confirm-delete-text').textContent = 'Delete Target';
-      document.getElementById('delete-confirm-modal').classList.remove('hidden');
-    }
-
-    function spotlightHotspot(h) {
+    async function spotlightHotspot(h) {
       if (!h) return;
 
       if (typeof h.phi === 'number' && typeof h.theta === 'number') {
@@ -2188,9 +2195,18 @@
       const popupImg = document.getElementById('teacher-artifact-img');
       const popupTitle = document.getElementById('teacher-artifact-title');
       if (popup && popupImg && popupTitle) {
-        if (h.image) {
-          popupImg.src = h.image;
-          popupTitle.innerHTML = `<i class="fa-solid fa-image text-[10px]"></i><span>${escapeHtml(h.title)}</span>`;
+        const imgSource = h.image || h.imageUrl || h.photo || null;
+        if (imgSource) {
+          const resolvedImg = await getAssetBlobUrl(imgSource);
+          popupImg.onerror = () => {
+            // Fallback for Google Drive links if lh3 format fails
+            const driveMatch = imgSource.match(/\/d\/([a-zA-Z0-9_-]+)/);
+            if (driveMatch && driveMatch[1] && !popupImg.src.includes('drive.google.com')) {
+              popupImg.src = `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w1600`;
+            }
+          };
+          popupImg.src = resolvedImg;
+          popupTitle.innerHTML = `<i class="fa-solid fa-image text-xs"></i><span>${escapeHtml(h.title)}</span>`;
           popup.classList.remove('hidden');
         } else {
           popup.classList.add('hidden');
@@ -2204,7 +2220,7 @@
         hotspotId: h.id,
         title: h.title,
         text: h.text,
-        image: h.image || null,
+        image: h.image || h.imageUrl || h.photo || null,
         phi: h.phi,
         theta: h.theta
       });
