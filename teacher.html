@@ -863,76 +863,10 @@
       });
     }
 
-    /* Default Preset Tours */
-    const DEFAULT_PRESET_TOURS = [
-      {
-        id: "apollo-11",
-        title: "Apollo 11: Lunar Exploration",
-        subject: "Space Science",
-        grade: "Grades 5-10",
-        description: "Follow Neil Armstrong and Buzz Aldrin as they land the Apollo 11 Lunar Module Eagle on the Moon.",
-        cover: "https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?auto=format&fit=crop&w=800&q=80",
-        scenes: [
-          {
-            id: "moon-base",
-            title: "Tranquility Base Landing Site",
-            script: "On July 20, 1969, humanity first stepped onto another celestial body. Direct student gaze toward the Lunar Module foil and the astronaut footprints preserved in lunar regolith.",
-            panorama: "https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?auto=format&fit=crop&w=2000&q=80",
-            hotspots: [
-              { id: "hotspot-flag", title: "American Lunar Flag", text: "Notice the horizontal telescopic rod along the top of the flag. Why did NASA add this bar? (Because there is no atmosphere or wind on the Moon).", phi: 1.6, theta: 0.8 },
-              { id: "hotspot-lem", title: "Lunar Module Descent Stage", text: "Observe the gold Kapton insulation foil. It protected delicate instruments from wild 500-degree Fahrenheit thermal swings.", phi: 1.5, theta: 2.7 }
-            ]
-          },
-          {
-            id: "moon-earthrise",
-            title: "View of Earth from Lunar Orbit",
-            script: "Before landing, the crew captured images of Earth rising over the cratered horizon. Discuss why Earth appears like a fragile blue marble in the cosmic void.",
-            panorama: "https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?auto=format&fit=crop&w=2000&q=80",
-            hotspots: [
-              { id: "hotspot-earth", title: "Planet Earth", text: "Contrast the vibrant atmosphere of Earth with the completely airless, desolate surface of the Moon below.", phi: 1.3, theta: 1.1 }
-            ]
-          }
-        ]
-      },
-      {
-        id: "great-barrier-reef",
-        title: "Great Barrier Reef: Coral Ecology",
-        subject: "Marine Biology",
-        grade: "Grades 4-9",
-        description: "Dive beneath the Coral Sea off Queensland, Australia to investigate biodiversity, symbiosis, and reef health.",
-        cover: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80",
-        scenes: [
-          {
-            id: "reef-outer-crest",
-            title: "The Outer Reef Crest",
-            script: "Corals are colonial marine invertebrates that build calcium carbonate exoskeletons. Point students toward the branching staghorn coral.",
-            panorama: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=2000&q=80",
-            hotspots: [
-              { id: "hotspot-coral", title: "Staghorn Coral Colonies", text: "Ask students: How do micro-algae living inside coral tissue generate nutrients through photosynthesis?", phi: 1.7, theta: 1.4 }
-            ]
-          }
-        ]
-      },
-      {
-        id: "colosseum-rome",
-        title: "The Roman Colosseum & Flavian Vaults",
-        subject: "World History",
-        grade: "Grades 6-12",
-        description: "Explore the architectural engineering of the Flavian Amphitheatre in ancient Rome, completed in 80 AD.",
-        cover: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&w=800&q=80",
-        scenes: [
-          {
-            id: "colosseum-interior",
-            title: "The Arena Hypogeum",
-            script: "The Colosseum seated up to 50,000 Roman citizens. Beneath the sand arena lay the hypogeum: a network of elevators, cages, and mechanical tunnels.",
-            panorama: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&w=2000&q=80",
-            hotspots: [
-              { id: "hotspot-arches", title: "Travertine Archways", text: "Roman engineers perfected the true keystone arch to distribute immense compressive loads across multiple vaulted tiers.", phi: 1.5, theta: 0.5 }
-            ]
-          }
-        ]
-      }
-    ];
+    /* Default Preset Tours (Cleared so only your actual tours display) */
+    const DEFAULT_PRESET_TOURS = [];
+    const LEGACY_PLACEHOLDER_IDS = ['apollo-11', 'great-barrier-reef', 'colosseum-rome'];
+    const FALLBACK_PANO_URL = "https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?auto=format&fit=crop&w=2000&q=80";
 
     /* Application State */
     let allTours = [];
@@ -1456,7 +1390,7 @@
       try {
         const indexRaw = localStorage.getItem('teacher_tours_index');
         if (indexRaw) {
-          const ids = JSON.parse(indexRaw);
+          const ids = JSON.parse(indexRaw).filter(id => !LEGACY_PLACEHOLDER_IDS.includes(id));
           const loaded = [];
           ids.forEach(id => {
             const itemRaw = localStorage.getItem(`tour_item_${id}`);
@@ -1464,20 +1398,23 @@
               try { loaded.push(JSON.parse(itemRaw)); } catch (e) {}
             }
           });
-          allTours = loaded.length > 0 ? loaded : JSON.parse(JSON.stringify(DEFAULT_PRESET_TOURS));
+          allTours = loaded;
+          saveAllTourKeysIndividually();
         } else {
           // Migrate legacy single-key cache to per-tour keys automatically
           const legacyCached = localStorage.getItem('teacher_saved_tours');
           if (legacyCached) {
-            allTours = JSON.parse(legacyCached);
+            allTours = JSON.parse(legacyCached).filter(t => t && !LEGACY_PLACEHOLDER_IDS.includes(t.id));
             saveAllTourKeysIndividually();
             localStorage.removeItem('teacher_saved_tours');
           } else {
-            allTours = JSON.parse(JSON.stringify(DEFAULT_PRESET_TOURS));
+            allTours = [];
           }
         }
+        // Clean up any leftover placeholder entries in localStorage
+        LEGACY_PLACEHOLDER_IDS.forEach(id => localStorage.removeItem(`tour_item_${id}`));
       } catch (e) {
-        allTours = JSON.parse(JSON.stringify(DEFAULT_PRESET_TOURS));
+        allTours = [];
       }
 
       const localKeys = await getDownloadedTourIds();
@@ -1588,9 +1525,16 @@
       if (!cloudTours || cloudTours.length === 0) return;
 
       const mergedMap = new Map();
-      DEFAULT_PRESET_TOURS.forEach(t => mergedMap.set(t.id, t));
-      allTours.forEach(t => mergedMap.set(t.id, t));
-      cloudTours.forEach(ct => mergedMap.set(ct.id, ct));
+      allTours.forEach(t => {
+        if (t && !LEGACY_PLACEHOLDER_IDS.includes(t.id)) {
+          mergedMap.set(t.id, t);
+        }
+      });
+      cloudTours.forEach(ct => {
+        if (ct && !LEGACY_PLACEHOLDER_IDS.includes(ct.id)) {
+          mergedMap.set(ct.id, ct);
+        }
+      });
 
       allTours = Array.from(mergedMap.values());
       saveAllTourKeysIndividually();
@@ -2176,6 +2120,15 @@
         saveToursToStorage(true);
         renderHotspots(currentScene.hotspots);
         renderDrawerTargetsList(currentScene.hotspots);
+        showFloatingToast(`Deleted target "${h.title}"`);
+      };
+
+      document.getElementById('delete-modal-title').textContent = 'Delete Target Marker?';
+      document.getElementById('delete-modal-desc').textContent = `Are you sure you want to remove "${h.title}" from this scene?`;
+      document.getElementById('btn-confirm-delete-text').textContent = 'Delete Target';
+      document.getElementById('delete-confirm-modal').classList.remove('hidden');
+    }
+
     async function spotlightHotspot(h) {
       if (!h) return;
 
@@ -2407,7 +2360,7 @@
         const card = document.createElement('div');
         card.className = 'group bg-slate-900 border border-slate-800 hover:border-indigo-500/50 rounded-3xl overflow-hidden shadow-xl transition flex flex-col justify-between';
 
-        const coverImg = tour.cover || (tour.scenes && tour.scenes[0] && tour.scenes[0].panorama) || DEFAULT_PRESET_TOURS[0].cover;
+        const coverImg = tour.cover || (tour.scenes && tour.scenes[0] && tour.scenes[0].panorama) || FALLBACK_PANO_URL;
         const scenesCount = tour.scenes ? tour.scenes.length : 0;
         const isOffline = downloadedTourIds.has(tour.id);
 
@@ -2866,9 +2819,10 @@
       btnBannerAction.onclick = () => {
         if (isStudioMode) {
           openCreateTourModal();
+        } else if (allTours.length > 0) {
+          enterExpeditionWorkspace(allTours[0]);
         } else {
-          const defaultTour = allTours[0] || DEFAULT_PRESET_TOURS[0];
-          enterExpeditionWorkspace(defaultTour);
+          showFloatingToast('No tours available yet. Switch to Tour Studio to create one!');
         }
       };
 
@@ -3319,7 +3273,7 @@
           return;
         }
 
-        const panoUrl = stagedPanoBase64 || urlInput || DEFAULT_PRESET_TOURS[0].scenes[0].panorama;
+        const panoUrl = stagedPanoBase64 || urlInput || FALLBACK_PANO_URL;
 
         const newScene = {
           id: 'scene-' + Date.now(),
