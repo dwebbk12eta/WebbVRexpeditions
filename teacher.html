@@ -3295,11 +3295,35 @@
           currentSceneIndex = currentTour.scenes.length - 1;
         }
 
+        const targetIndex = currentSceneIndex;
         saveToursToStorage(true);
         document.getElementById('add-scene-modal').classList.add('hidden');
         enterExpeditionWorkspace(currentTour);
+        currentSceneIndex = targetIndex;
         loadScene(currentTour.scenes[currentSceneIndex], false);
       };
+
+      // Edit & Delete Scene Buttons (Bottom Floating Bar & Teaching Guide Drawer)
+      const btnStudioEditScene = document.getElementById('btn-studio-edit-scene');
+      if (btnStudioEditScene) {
+        btnStudioEditScene.onclick = () => openEditSceneModal();
+      }
+      const btnDrawerEditScene = document.getElementById('btn-drawer-edit-scene');
+      if (btnDrawerEditScene) {
+        btnDrawerEditScene.onclick = () => openEditSceneModal();
+      }
+      const btnStudioDeleteScene = document.getElementById('btn-studio-delete-scene');
+      if (btnStudioDeleteScene) {
+        btnStudioDeleteScene.onclick = () => promptDeleteCurrentScene();
+      }
+      const btnDrawerDeleteScene = document.getElementById('btn-drawer-delete-scene');
+      if (btnDrawerDeleteScene) {
+        btnDrawerDeleteScene.onclick = () => promptDeleteCurrentScene();
+      }
+      const btnStudioDeleteTour = document.getElementById('btn-studio-delete-tour');
+      if (btnStudioDeleteTour) {
+        btnStudioDeleteTour.onclick = () => promptDeleteTour(currentTour);
+      }
 
       // Shared Helper to Open Add Hotspot Modal at Current Camera Center
       function openAddHotspotModalAtCurrentView() {
