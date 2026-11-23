@@ -1102,9 +1102,10 @@
           clearInterval(peerKeepAliveInterval);
           peerKeepAliveInterval = setInterval(() => {
             if (teacherPeer && !teacherPeer.destroyed && teacherPeer.disconnected && !isStudioMode) {
-              initTeacherPeerServer(roomCode, true);
+              // Soft-reconnect signaling socket without destroying existing student WebRTC channels
+              try { teacherPeer.reconnect(); } catch (e) {}
             }
-          }, 20000);
+          }, 12000);
         });
 
         teacherPeer.on('connection', (conn) => {
@@ -1142,19 +1143,21 @@
           if (!isStudioMode) {
             setSignalingUI('connecting', 'Signal: Roaming AP, reconnecting...');
             clearTimeout(peerReconnectTimeout);
-            // Attempt non-destructive .reconnect() first so active student WebRTC tunnels stay alive!
+            // Soft .reconnect() preserves all active peer-to-peer student WebRTC channels!
             try {
               if (teacherPeer && !teacherPeer.destroyed) {
                 teacherPeer.reconnect();
               }
             } catch (e) {}
 
-            // Fallback: only rebuild from scratch if signaling does not recover within 5 seconds
+            // Retry soft reconnect without tearing down active student connections
             peerReconnectTimeout = setTimeout(() => {
-              if (teacherPeer && (teacherPeer.disconnected || teacherPeer.destroyed) && !isStudioMode) {
+              if (teacherPeer && !teacherPeer.destroyed && teacherPeer.disconnected && !isStudioMode) {
+                try { teacherPeer.reconnect(); } catch (e) {}
+              } else if ((!teacherPeer || teacherPeer.destroyed) && !isStudioMode) {
                 initTeacherPeerServer(roomCode, true);
               }
-            }, 5000);
+            }, 4000);
           }
         });
       } catch (e) {
@@ -1282,6 +1285,15 @@
           const needsScene = !msg.currentSceneId || (currentScene && msg.currentSceneId !== currentScene.id);
           if (msg.type === 'STUDENT_JOIN' || needsScene) {
             sendSceneSyncToPeer(targetConn, peerId, msg.type === 'STUDENT_JOIN');
+          } else {
+            // Send lightweight ~50-byte PONG so student NAT pinhole & watchdog stay alive
+            try {
+              targetConn.send({
+                type: 'TEACHER_PONG',
+                roomCode: currentRoomCode,
+                sceneId: currentScene ? currentScene.id : null
+              });
+            } catch (e) {}
           }
         }
       } else if (msg.type === 'STUDENT_GAZE') {
@@ -2107,13 +2119,15 @@
         }
       }
 
+      const safeBroadcastImage = (h.image && !h.image.startsWith('data:')) ? h.image : null;
+
       broadcastTeacherAction({
         type: 'TEACHER_SPOTLIGHT',
         roomCode: currentRoomCode,
         hotspotId: h.id,
         title: h.title,
         text: h.text,
-        image: h.image || h.imageUrl || h.photo || null,
+        image: safeBroadcastImage,
         phi: h.phi,
         theta: h.theta
       });
