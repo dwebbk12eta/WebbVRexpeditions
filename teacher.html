@@ -1140,12 +1140,21 @@
 
         teacherPeer.on('disconnected', () => {
           if (!isStudioMode) {
-            setSignalingUI('connecting', 'Signal: Rebuilding connection...');
+            setSignalingUI('connecting', 'Signal: Roaming AP, reconnecting...');
             clearTimeout(peerReconnectTimeout);
-            // Destroy and rebuild cleanly instead of calling .reconnect() which loops on dead sockets
+            // Attempt non-destructive .reconnect() first so active student WebRTC tunnels stay alive!
+            try {
+              if (teacherPeer && !teacherPeer.destroyed) {
+                teacherPeer.reconnect();
+              }
+            } catch (e) {}
+
+            // Fallback: only rebuild from scratch if signaling does not recover within 5 seconds
             peerReconnectTimeout = setTimeout(() => {
-              initTeacherPeerServer(roomCode, true);
-            }, 2500);
+              if (teacherPeer && (teacherPeer.disconnected || teacherPeer.destroyed) && !isStudioMode) {
+                initTeacherPeerServer(roomCode, true);
+              }
+            }, 5000);
           }
         });
       } catch (e) {
@@ -1154,85 +1163,6 @@
       }
 
       setupLocalChannelSync();
-    }
-
-    function setupIncomingStudentConnection(conn) {
-      if (!conn) return;
-      const peerId = conn.peer;
-
-      const sendCatchup = () => {
-        try {
-          if (conn.open && !isStudioMode) {
-            // Strip massive raw data:image strings if present so WebRTC DataChannel never chokes
-            const lightweightTour = currentTour ? {
-              id: currentTour.id,
-              title: currentTour.title,
-              subject: currentTour.subject,
-              scenes: (currentTour.scenes || []).map(s => ({
-                id: s.id,
-                title: s.title,
-                panorama: (s.panorama && s.panorama.length > 500000) ? '' : s.panorama,
-                hotspots: (s.hotspots || []).map(h => ({
-                  id: h.id,
-                  title: h.title,
-                  text: h.text,
-                  phi: h.phi,
-                  theta: h.theta,
-                  image: (h.image && h.image.length > 250000) ? null : h.image
-                }))
-              }))
-            } : null;
-
-            const lightweightScene = currentScene ? {
-              id: currentScene.id,
-              title: currentScene.title,
-              panorama: currentScene.panorama,
-              hotspots: currentScene.hotspots || []
-            } : null;
-
-            conn.send({
-              type: 'TEACHER_HANDSHAKE_ACK',
-              roomCode: currentRoomCode,
-              tour: lightweightTour,
-              scene: lightweightScene,
-              sceneIndex: currentSceneIndex
-            });
-          }
-        } catch (err) {
-          console.warn('Failed to send catchup to student:', peerId, err);
-        }
-      };
-
-      conn.on('open', () => {
-        if (isStudioMode) {
-          conn.close();
-          return;
-        }
-        studentConnections.set(peerId, conn);
-        sendCatchup();
-        // Send a second catchup 800ms later in case the student's data listener attached slightly after open
-        setTimeout(sendCatchup, 800);
-      });
-
-      conn.on('data', (data) => {
-        if (!isStudioMode) {
-          handleIncomingStudentMessage(data, conn.peer);
-        }
-      });
-
-      conn.on('close', () => {
-        removeStudentSession(peerId);
-      });
-
-      conn.on('error', (err) => {
-        console.warn('Student connection error:', peerId, err);
-        removeStudentSession(peerId);
-      });
-
-      if (conn.open) {
-        studentConnections.set(peerId, conn);
-        sendCatchup();
-      }
     }
 
     function removeStudentSession(peerId) {
@@ -1317,6 +1247,16 @@
         console.warn('Student connection error:', peerId, err);
         removeStudentSession(peerId);
       });
+
+      // Monitor underlying ICE connection state for student AP roaming
+      if (conn.peerConnection) {
+        conn.peerConnection.oniceconnectionstatechange = () => {
+          const iceState = conn.peerConnection?.iceConnectionState;
+          if (iceState === 'failed' || iceState === 'closed') {
+            removeStudentSession(peerId);
+          }
+        };
+      }
 
       if (conn.open) {
         studentConnections.set(peerId, conn);
