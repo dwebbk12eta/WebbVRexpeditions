@@ -410,6 +410,7 @@
     let studentNumber = Math.floor(1 + Math.random() * 999);
     let studentName = 'Student ' + studentNumber;
     let studentId = 'student-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now().toString(36);
+    let hasJoinedSession = false;
     let isConnectedToTeacher = false;
     let currentTour = null;
     let currentScene = null;
@@ -446,6 +447,8 @@
     let heartbeatInterval = null;
     let gazeBroadcastInterval = null;
     let connectionTimeoutTimer = null;
+    let autoReconnectTimer = null;
+    let isReconnecting = false;
     let lastSentLon = null, lastSentLat = null;
     let localBroadcastChannel = null;
 
@@ -1025,25 +1028,231 @@
     }
 
     /* ---------------------------------------------------------
-       WebRTC Networking (Multi-Device Client)
+       WebRTC Networking (Multi-Device Client with AP Roaming Recovery)
        --------------------------------------------------------- */
-    function initializePeerNetwork(roomCode) {
+    function scheduleRoamingReconnect(delayMs = 2000) {
+      if (!hasJoinedSession || isConnectedToTeacher) return;
+      clearTimeout(autoReconnectTimer);
+      autoReconnectTimer = setTimeout(() => {
+        if (!hasJoinedSession || isConnectedToTeacher) return;
+        isReconnecting = true;
+        showStudentToast('Reconnecting to teacher...');
+        if (peer && !peer.destroyed && !peer.disconnected) {
+          connectToTeacherPeer(`teacher-room-${currentRoomCode}`);
+        } else {
+          initializePeerNetwork(currentRoomCode, true);
+        }
+      }, delayMs);
+    }
+
+    function initializePeerNetwork(roomCode, silentReconnect = false) {
       if (isConnectedToTeacher) return;
 
       currentRoomCode = roomCode.trim();
+      hasJoinedSession = true;
       const teacherPeerId = `teacher-room-${currentRoomCode}`;
       const errPill = document.getElementById('join-error-pill');
       const statusPill = document.getElementById('join-status-pill');
       const btnIcon = document.getElementById('btn-join-icon');
       const btnText = document.getElementById('btn-join-text');
 
-      if (btnIcon) btnIcon.className = 'fa-solid fa-circle-notch fa-spin';
-      if (btnText) btnText.textContent = 'Connecting...';
-      if (errPill) errPill.classList.add('hidden');
-      if (statusPill) {
-        statusPill.classList.remove('hidden');
-        safeSetText('join-status-msg', '1/3: Connecting to WebRTC relay...');
+      if (!silentReconnect) {
+        if (btnIcon) btnIcon.className = 'fa-solid fa-circle-notch fa-spin';
+        if (btnText) btnText.textContent = 'Connecting...';
+        if (errPill) errPill.classList.add('hidden');
+        if (statusPill) {
+          statusPill.classList.remove('hidden');
+          safeSetText('join-status-msg', '1/3: Connecting to WebRTC relay...');
+        }
       }
+
+      if (teacherConn) {
+        try { teacherConn.close(); } catch (e) {}
+        teacherConn = null;
+      }
+      if (peer) {
+        try { peer.destroy(); } catch (e) {}
+        peer = null;
+      }
+
+      clearTimeout(connectionTimeoutTimer);
+
+      try {
+        peer = new Peer(undefined, {
+          debug: 1,
+          config: {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' },
+              { urls: 'stun:stun2.l.google.com:19302' },
+              { urls: 'stun:stun.services.mozilla.com' }
+            ]
+          }
+        });
+
+        peer.on('open', (id) => {
+          studentId = id;
+          safeSetText('network-client-id', `ID: ${id.substring(0, 12)}...`);
+          if (!silentReconnect && statusPill) {
+            safeSetText('join-status-msg', `2/3: Handshaking with room ${currentRoomCode}...`);
+          }
+          connectToTeacherPeer(teacherPeerId);
+        });
+
+        peer.on('disconnected', () => {
+          // If signaling drops during AP handoff, recover quietly
+          if (hasJoinedSession && !isConnectedToTeacher) {
+            scheduleRoamingReconnect(2000);
+          }
+        });
+
+        peer.on('error', (err) => {
+          console.warn('Peer error:', err);
+          if (silentReconnect || isReconnecting) {
+            scheduleRoamingReconnect(2500);
+            return;
+          }
+          if (err && err.type === 'peer-unavailable') {
+            if (errPill) {
+              errPill.classList.remove('hidden');
+              safeSetText('join-error-msg', `Teacher room ${currentRoomCode} not found. Is teacher in Presenter Mode?`);
+            }
+            if (statusPill) statusPill.classList.add('hidden');
+            if (btnIcon) btnIcon.className = 'fa-solid fa-satellite-dish';
+            if (btnText) btnText.textContent = 'Enter Expedition';
+          }
+        });
+      } catch (err) {
+        console.warn('PeerJS init failed:', err);
+        setupLocalChannelSync();
+      }
+
+      setupLocalChannelSync();
+    }
+
+    function connectToTeacherPeer(teacherPeerId) {
+      if (!peer || peer.destroyed || isConnectedToTeacher) return;
+
+      if (teacherConn) {
+        try { teacherConn.close(); } catch (e) {}
+        teacherConn = null;
+      }
+
+      try {
+        teacherConn = peer.connect(teacherPeerId, { reliable: true });
+
+        // Monitor underlying WebRTC ICE state for Wi-Fi Access Point handoffs
+        if (teacherConn.peerConnection) {
+          teacherConn.peerConnection.oniceconnectionstatechange = () => {
+            const iceState = teacherConn.peerConnection?.iceConnectionState;
+            if (iceState === 'disconnected' || iceState === 'failed') {
+              console.warn('[WebRTC] ICE state disrupted during roaming:', iceState);
+              isConnectedToTeacher = false;
+              scheduleRoamingReconnect(1800);
+            }
+          };
+        }
+
+        teacherConn.on('open', () => {
+          const statusPill = document.getElementById('join-status-pill');
+          if (statusPill) safeSetText('join-status-msg', '3/3: Synchronizing 3D panorama...');
+          onTeacherConnected();
+          sendHeartbeat();
+        });
+
+        teacherConn.on('data', (data) => {
+          handleTeacherIncomingPayload(data);
+        });
+
+        teacherConn.on('close', () => {
+          const wasConnected = isConnectedToTeacher;
+          isConnectedToTeacher = false;
+          if (hasJoinedSession) {
+            if (wasConnected) {
+              showStudentToast('Wi-Fi roaming — reconnecting...');
+            }
+            scheduleRoamingReconnect(1500);
+          }
+        });
+
+        teacherConn.on('error', (err) => {
+          console.warn('Teacher connection error:', err);
+          isConnectedToTeacher = false;
+          if (hasJoinedSession) {
+            scheduleRoamingReconnect(2000);
+          }
+        });
+      } catch (e) {
+        console.warn('Connect error:', e);
+        if (hasJoinedSession) {
+          scheduleRoamingReconnect(2500);
+        }
+      }
+
+      clearTimeout(connectionTimeoutTimer);
+      connectionTimeoutTimer = setTimeout(() => {
+        if (!isConnectedToTeacher) {
+          if (isReconnecting) {
+            scheduleRoamingReconnect(2500);
+            return;
+          }
+          const statusPill = document.getElementById('join-status-pill');
+          const errPill = document.getElementById('join-error-pill');
+          const btnIcon = document.getElementById('btn-join-icon');
+          const btnText = document.getElementById('btn-join-text');
+
+          if (statusPill) statusPill.classList.add('hidden');
+          if (errPill) {
+            errPill.classList.remove('hidden');
+            safeSetText('join-error-msg', 'Connection timed out. Check that teacher is on room ' + currentRoomCode);
+          }
+          if (btnIcon) btnIcon.className = 'fa-solid fa-satellite-dish';
+          if (btnText) btnText.textContent = 'Retry Connection';
+        }
+      }, 10000);
+    }
+
+    function onTeacherConnected() {
+      if (isConnectedToTeacher) return;
+      const wasReconnecting = isReconnecting;
+      isConnectedToTeacher = true;
+      isReconnecting = false;
+      clearTimeout(connectionTimeoutTimer);
+      clearTimeout(autoReconnectTimer);
+
+      requestScreenWakeLock();
+
+      // Safely transition DOM screens using explicit elements
+      const joinScreen = elScreenJoin || document.getElementById('screen-join');
+      const hudScreen = elScreenHud || document.getElementById('screen-hud');
+
+      if (joinScreen) joinScreen.classList.add('hidden');
+      if (hudScreen) hudScreen.classList.remove('hidden');
+
+      safeSetText('hud-room-code', `ROOM ${currentRoomCode}`);
+
+      if (!currentScene) {
+        safeSetText('hud-tour-title', 'Syncing with Teacher...');
+        safeSetText('hud-scene-title', 'Loading active tour...');
+      }
+
+      clearInterval(heartbeatInterval);
+      clearInterval(gazeBroadcastInterval);
+      // Lightweight heartbeat every 8 seconds; also acts as a link health watchdog
+      heartbeatInterval = setInterval(() => {
+        if (teacherConn && !teacherConn.open && hasJoinedSession) {
+          isConnectedToTeacher = false;
+          scheduleRoamingReconnect(1000);
+          return;
+        }
+        sendHeartbeat('STUDENT_HEARTBEAT');
+      }, 8000);
+      sendHeartbeat('STUDENT_JOIN');
+      // Reduced broadcast frequency to 150ms with 1.5° deadband for zero mesh congestion
+      gazeBroadcastInterval = setInterval(sendGazeTelemetry, 150);
+
+      showStudentToast(wasReconnecting ? `Reconnected to Room ${currentRoomCode}!` : `Connected to Room ${currentRoomCode}!`);
+    }
 
       if (teacherConn) {
         try { teacherConn.close(); } catch (e) {}
@@ -1351,7 +1560,11 @@
       const btnLeave = document.getElementById('btn-leave-room');
       if (btnLeave) {
         btnLeave.onclick = () => {
+          hasJoinedSession = false;
           isConnectedToTeacher = false;
+          isReconnecting = false;
+          clearTimeout(autoReconnectTimer);
+          clearTimeout(connectionTimeoutTimer);
           clearInterval(heartbeatInterval);
           clearInterval(gazeBroadcastInterval);
           if (teacherConn) {
@@ -1505,6 +1718,13 @@
       elScreenHud = document.getElementById('screen-hud');
       initThreeEngine();
       setupDOMHandlers();
+
+      // Immediately re-establish WebRTC link when device associates with a new Wi-Fi AP
+      window.addEventListener('online', () => {
+        if (hasJoinedSession && !isConnectedToTeacher) {
+          scheduleRoamingReconnect(800);
+        }
+      });
     });
   </script>
 </body>
