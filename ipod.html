@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Expeditions Student Viewer (iPod Edition)</title>
+
+  <!-- Apple Standalone Web App Meta Tags for iPod touch (iOS 12+) -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Expeditions VR">
+  <meta name="theme-color" content="#020617">
+  <link rel="apple-touch-icon" href="https://placehold.co/192x192/4338ca/ffffff?text=VR">
+
+  <!-- Tailwind CSS & FontAwesome Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Three.js r128 (3D Panoramas) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- PeerJS 1.5.4 (WebRTC Realtime Mesh) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      -webkit-user-select: none;
+      user-select: none;
+      background: #000000;
+    }
+
+    #webgl-canvas-container {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      touch-action: none;
+      background: #000000;
+    }
+
+    #screen-join, #screen-join button, #screen-join input {
+      touch-action: manipulation;
+    }
+
+    /* Clean, Floating Plain White Directional Guidance Arrow */
+    .directional-arrow-wrapper {
+      position: absolute;
+      top: 50%;
+      -webkit-transform: translate(-50%, -50%);
+      transform: translate(-50%, -50%);
+      z-index: 30;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-transition: opacity 0.2s ease;
+      transition: opacity 0.2s ease;
+      opacity: 0;
+    }
+
+    .arrow-rotor {
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      will-change: transform;
+    }
+
+    .plain-white-arrow {
+      width: 28px;
+      height: 28px;
+      -webkit-transform: translateY(-20px);
+      transform: translateY(-20px);
+      -webkit-filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.85));
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.85));
+    }
+
+    /* Homido Grab Physical Center Divider Line */
+    #vr-center-separator {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 4px;
+      -webkit-transform: translateX(-50%);
+      transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.45);
+      z-index: 35;
+      pointer-events: none;
+      display: none;
+    }
+
+    #vr-center-separator::before, #vr-center-separator::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      -webkit-transform: translateX(-50%);
+      transform: translateX(-50%);
+      width: 10px;
+      height: 10px;
+      background: #ffffff;
+      border: 2px solid #000000;
+      border-radius: 50%;
+    }
+    #vr-center-separator::before { top: 14px; }
+    #vr-center-separator::after { bottom: 14px; }
+
+    .vr-split-active #vr-center-separator {
+      display: block;
+    }
+
+    /* Calibration Reticles for Eye Alignment */
+    .calibration-target {
+      position: absolute;
+      top: 50%;
+      -webkit-transform: translate(-50%, -50%);
+      transform: translate(-50%, -50%);
+      width: 28px;
+      height: 28px;
+      border: 2px dashed rgba(255, 255, 255, 0.75);
+      border-radius: 50%;
+      pointer-events: none;
+      display: none;
+      z-index: 36;
+    }
+    .calibration-target::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      -webkit-transform: translate(-50%, -50%);
+      transform: translate(-50%, -50%);
+      width: 6px;
+      height: 6px;
+      background: #ffffff;
+      border-radius: 50%;
+    }
+    .show-calibration .calibration-target {
+      display: block;
+    }
+
+    #rotate-device-prompt {
+      display: none;
+    }
+    @media (orientation: portrait) {
+      .vr-split-active #rotate-device-prompt {
+        display: flex !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-black text-slate-100 font-sans h-full overflow-hidden select-none">
+
+  <!-- 3D WEBGL CANVAS -->
+  <div id="webgl-canvas-container"></div>
+
+  <!-- HOMIDO GRAB PHYSICAL CENTER DIVIDER -->
+  <div id="vr-center-separator"></div>
+
+  <!-- STEREO CALIBRATION CROSSHAIRS -->
+  <div id="calib-left" class="calibration-target" style="left: 25%;"></div>
+  <div id="calib-right" class="calibration-target" style="left: 75%;"></div>
+
+  <!-- MINIMAL PLAIN WHITE GUIDANCE ARROWS -->
+  <div id="arrow-wrap-mono" class="directional-arrow-wrapper left-1/2">
+    <div id="arrow-rotor-mono" class="arrow-rotor">
+      <svg class="plain-white-arrow" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L4 19L12 15L20 19L12 2Z" fill="#ffffff"/>
+      </svg>
+    </div>
+  </div>
+
+  <div id="arrow-wrap-left" class="directional-arrow-wrapper hidden" style="left: 25%;">
+    <div id="arrow-rotor-left" class="arrow-rotor">
+      <svg class="plain-white-arrow" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L4 19L12 15L20 19L12 2Z" fill="#ffffff"/>
+      </svg>
+    </div>
+  </div>
+
+  <div id="arrow-wrap-right" class="directional-arrow-wrapper hidden" style="left: 75%;">
+    <div id="arrow-rotor-right" class="arrow-rotor">
+      <svg class="plain-white-arrow" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L4 19L12 15L20 19L12 2Z" fill="#ffffff"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- IN-VIEW ARTIFACT POPUP (Uncropped Image Display) -->
+  <div id="artifact-wrap-mono" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none transition-opacity duration-300 opacity-0 hidden">
+    <div class="max-w-[75vw] max-h-[65vh] bg-slate-950/85 border border-amber-500/50 rounded-2xl p-2 shadow-2xl flex flex-col items-center">
+      <img id="artifact-img-mono" src="" alt="Artifact Target" class="max-w-full max-h-[52vh] object-contain rounded-xl">
+      <p id="artifact-title-mono" class="text-xs font-bold text-amber-300 mt-1 px-2 text-center"></p>
+    </div>
+  </div>
+
+  <div id="artifact-wrap-left" class="fixed top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none transition-opacity duration-300 opacity-0 hidden" style="left: 25%;">
+    <div class="w-[36vw] max-h-[58vh] bg-slate-950/85 border border-amber-500/50 rounded-xl p-1.5 shadow-2xl flex flex-col items-center">
+      <img id="artifact-img-left" src="" alt="Artifact Target" class="max-w-full max-h-[44vh] object-contain rounded-lg">
+      <p id="artifact-title-left" class="text-[10px] font-bold text-amber-300 mt-1 px-1 text-center truncate w-full"></p>
+    </div>
+  </div>
+
+  <div id="artifact-wrap-right" class="fixed top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none transition-opacity duration-300 opacity-0 hidden" style="left: 75%;">
+    <div class="w-[36vw] max-h-[58vh] bg-slate-950/85 border border-amber-500/50 rounded-xl p-1.5 shadow-2xl flex flex-col items-center">
+      <img id="artifact-img-right" src="" alt="Artifact Target" class="max-w-full max-h-[44vh] object-contain rounded-lg">
+      <p id="artifact-title-right" class="text-[10px] font-bold text-amber-300 mt-1 px-1 text-center truncate w-full"></p>
+    </div>
+  </div>
+
+  <!-- ROTATE TO LANDSCAPE OVERLAY -->
+  <div id="rotate-device-prompt" class="fixed inset-0 z-50 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center space-y-3">
+    <div class="w-14 h-14 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center text-2xl">
+      <i class="fa-solid fa-rotate"></i>
+    </div>
+    <h3 class="text-base font-black text-white">Rotate iPod to Landscape</h3>
+    <p class="text-xs text-slate-400 max-w-xs leading-relaxed">
+      Turn the iPod horizontally and place it into the <strong>Homido Grab</strong> viewer.
+    </p>
+  </div>
+
+  <!-- SCREEN 1: JOIN & ROOM CODE ENTRY -->
+  <div id="screen-join" class="fixed inset-0 z-40 bg-slate-950 flex flex-col justify-between overflow-y-auto p-4">
+    <header class="flex items-center justify-between border-b border-slate-800/80 pb-3 max-w-md mx-auto w-full">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white text-base">
+          <i class="fa-solid fa-vr-cardboard"></i>
+        </div>
+        <div>
+          <h1 class="text-sm font-black text-white tracking-tight flex items-center gap-1.5">
+            <span>Expeditions VR</span>
+            <span class="text-[9px] font-bold uppercase tracking-wider text-amber-300 bg-amber-950/80 border border-amber-500/30 px-1.5 py-0.5 rounded-full">iPod Edition</span>
+          </h1>
+          <p class="text-[11px] text-slate-400">iOS 12 Low-Memory VR Engine</p>
+        </div>
+      </div>
+      <div class="text-[10px] font-mono text-slate-500" id="network-client-id">iOS 12 Ready</div>
+    </header>
+
+    <main class="max-w-sm w-full mx-auto my-auto p-5 bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl space-y-4">
+      <div class="text-center space-y-1">
+        <h2 class="text-lg font-black text-white">Join Your Classroom</h2>
+        <p class="text-[11px] text-slate-400">Optimized for iPod touch 6th Gen (1 GB RAM)</p>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-slate-300 text-xs font-semibold mb-1">5-Digit Room Code</label>
+          <input type="text" id="input-room-code" maxlength="5" value="48291" placeholder="48291" autocomplete="off"
+                 class="w-full bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-2xl px-4 py-2.5 text-center text-xl font-mono font-black tracking-widest text-indigo-300 focus:outline-none">
+        </div>
+
+        <div id="join-error-pill" class="hidden p-2.5 bg-rose-950/80 border border-rose-800 text-rose-300 text-xs rounded-xl flex items-center gap-2">
+          <i class="fa-solid fa-circle-exclamation text-sm shrink-0"></i>
+          <span id="join-error-msg">Connecting to room...</span>
+        </div>
+
+        <div id="join-status-pill" class="hidden p-2.5 bg-indigo-950/80 border border-indigo-700/80 text-indigo-300 text-xs rounded-xl flex items-center gap-2">
+          <i class="fa-solid fa-circle-notch fa-spin text-sm shrink-0"></i>
+          <span id="join-status-msg">Contacting teacher...</span>
+        </div>
+
+        <button type="button" id="btn-join-room" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm py-3 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition active:scale-95">
+          <i class="fa-solid fa-satellite-dish" id="btn-join-icon"></i>
+          <span id="btn-join-text">Enter Expedition</span>
+        </button>
+      </div>
+
+      <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400">
+        <span>2K Texture Saver Active</span>
+        <button type="button" id="btn-quick-sample-tour" class="text-indigo-400">Preview Tour</button>
+      </div>
+    </main>
+
+    <footer class="text-center text-[10px] text-slate-500 py-2">
+      Tip: Ensure Settings → Safari → Motion & Orientation Access is ON
+    </footer>
+  </div>
+
+  <!-- SCREEN 2: ACTIVE EXPEDITION HUD -->
+  <div id="screen-hud" class="fixed inset-0 z-30 pointer-events-none hidden">
+    <header id="hud-top-bar" class="pointer-events-auto p-2.5 flex items-center justify-between bg-gradient-to-b from-slate-950/90 via-slate-950/50 to-transparent">
+      <div class="flex items-center gap-2 truncate">
+        <button id="btn-leave-room" class="bg-slate-900/90 border border-slate-700/80 text-slate-300 px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95">
+          <i class="fa-solid fa-arrow-left text-[10px]"></i>
+        </button>
+
+        <div class="bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 px-2 py-1 rounded-xl text-[11px] font-mono font-bold flex items-center gap-1">
+          <i class="fa-solid fa-signal text-[9px] text-emerald-400"></i>
+          <span id="hud-room-code">48291</span>
+        </div>
+
+        <div class="flex flex-col truncate max-w-[140px]">
+          <span id="hud-tour-title" class="text-xs font-bold text-white truncate">Expedition</span>
+          <span id="hud-scene-title" class="text-[10px] text-slate-300 truncate">Scene 1</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1.5">
+        <button id="btn-toggle-gyro" class="bg-slate-900/90 border border-slate-700/80 text-slate-300 px-2 py-1.5 rounded-xl text-[11px] font-semibold flex items-center gap-1 active:scale-95">
+          <i class="fa-solid fa-arrows-up-down-left-right text-indigo-400"></i>
+          <span id="lbl-gyro">Motion</span>
+        </button>
+
+        <button id="btn-toggle-cardboard-vr" class="bg-indigo-600 border border-indigo-400 text-white px-2.5 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1 active:scale-95 shadow">
+          <i class="fa-solid fa-glasses"></i>
+          <span id="lbl-vr-mode">Homido VR</span>
+        </button>
+
+        <button id="btn-toggle-optics" class="bg-slate-900/90 border border-slate-700/80 text-slate-300 w-8 h-8 rounded-xl flex items-center justify-center active:scale-95" title="Calibrate Homido Optics">
+          <i class="fa-solid fa-sliders text-xs"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- OPTICAL CALIBRATION MODAL FOR HOMIDO GRAB -->
+    <div id="homido-optics-modal" class="pointer-events-auto fixed top-14 right-3 z-40 bg-slate-950/95 border border-indigo-500/40 rounded-2xl p-3.5 shadow-2xl w-72 space-y-3 hidden">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+        <span class="text-xs font-bold text-white flex items-center gap-1.5">
+          <i class="fa-solid fa-glasses text-indigo-400"></i>
+          <span>Homido Alignment (4" iPod)</span>
+        </span>
+        <button id="btn-close-optics" class="text-slate-400 hover:text-white text-xs p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-1.5">
+        <div class="flex justify-between text-[11px]">
+          <span class="text-slate-300">Lens Separation (IPD):</span>
+          <span id="lbl-optical-offset" class="font-mono text-indigo-400 font-bold">0 px</span>
+        </div>
+        <input type="range" id="slider-optical-offset" min="-60" max="60" value="0" step="1" class="w-full accent-indigo-500">
+      </div>
+
+      <div class="space-y-1.5">
+        <div class="flex justify-between text-[11px]">
+          <span class="text-slate-300">Optical Zoom (FOV):</span>
+          <span id="lbl-fov-val" class="font-mono text-indigo-400 font-bold">92°</span>
+        </div>
+        <input type="range" id="slider-fov" min="75" max="105" value="92" step="1" class="w-full accent-indigo-500">
+      </div>
+
+      <div class="pt-1 flex items-center justify-between">
+        <button id="btn-reset-optics" class="text-[10px] text-slate-400 hover:text-white">Reset</button>
+        <button id="btn-toggle-crosshairs" class="text-[10px] bg-slate-900 text-amber-300 border border-amber-500/40 px-2 py-1 rounded-lg">Hide Dots</button>
+      </div>
+    </div>
+
+    <!-- POPUP NOTIFICATIONS -->
+    <div id="student-toast-mono" class="fixed top-14 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-700/80 text-white px-3.5 py-1.5 rounded-full text-xs font-semibold shadow-xl transition-opacity duration-300 pointer-events-none opacity-0 z-40"></div>
+    <div id="student-toast-stereo-left" class="fixed top-12 w-[38%] -translate-x-1/2 bg-slate-900/95 border border-slate-700/80 text-white px-2 py-1 rounded-full text-[10px] text-center font-semibold shadow-xl transition-opacity duration-300 pointer-events-none opacity-0 z-40 hidden" style="left: 25%;"></div>
+    <div id="student-toast-stereo-right" class="fixed top-12 w-[38%] -translate-x-1/2 bg-slate-900/95 border border-slate-700/80 text-white px-2 py-1 rounded-full text-[10px] text-center font-semibold shadow-xl transition-opacity duration-300 pointer-events-none opacity-0 z-40 hidden" style="left: 75%;"></div>
+  </div>
+
+  <script>
+    /* =====================================================================
+       iOS 12.5.7 / iPod touch 6th Gen (1 GB RAM) Optimized Student Engine
+       - Zero optional chaining (?.) or nullish coalescing (??)
+       - Automatic 2048x1024 GPU texture downscaler & disposal to prevent
+         Safari WebGL memory crashes on 1 GB RAM devices
+       ===================================================================== */
+
+    const SAMPLE_PREVIEW_TOUR = {
+      id: "ipod-preview",
+      title: "Lunar Tranquility Base",
+      scenes: [
+        {
+          id: "moon-base",
+          title: "Apollo 11 Landing Site",
+          panorama: "https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?auto=format&fit=crop&w=1600&q=75",
+          hotspots: [
+            { id: "hotspot-flag", title: "American Lunar Flag", phi: 1.6, theta: 0.8 }
+          ]
+        }
+      ]
+    };
+
+    var currentRoomCode = '48291';
+    var studentNumber = Math.floor(1 + Math.random() * 999);
+    var studentName = 'iPod ' + studentNumber;
+    var studentId = 'ipod-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now().toString(36);
+    var hasJoinedSession = false;
+    var isConnectedToTeacher = false;
+    var currentTour = null;
+    var currentScene = null;
+    var loadingSceneId = null;
+    var activeSpotlightCoords = null;
+    var activeSpotlightData = null;
+    var isVrSplitMode = false;
+    var isGyroscopeActive = false;
+
+    /* Homido Grab Optical Calibration */
+    var opticalPixelOffset = parseInt(localStorage.getItem('homido_optical_offset') || '0', 10);
+    var userFov = parseInt(localStorage.getItem('homido_fov') || '92', 10);
+    var showCalibrationCrosshairs = true;
+
+    var lon = 0, lat = 0;
+    var isUserInteracting = false;
+    var onPointerDownPointerX = 0, onPointerDownPointerY = 0;
+    var onPointerDownLon = 0, onPointerDownLat = 0;
+
+    // Gyroscope tracking variables
+    var deviceOrientationData = null;
+    var screenOrientation = 0;
+    var zee = new THREE.Vector3(0, 0, 1);
+    var euler = new THREE.Euler();
+    var q0 = new THREE.Quaternion();
+    var q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+
+    var scene, camera, renderer, sphereMesh;
+    var hotspotGroup, impromptuMarker = null;
+
+    var peer = null;
+    var teacherConn = null;
+    var heartbeatInterval = null;
+    var gazeBroadcastInterval = null;
+    var connectionTimeoutTimer = null;
+    var autoReconnectTimer = null;
+    var iceGraceTimer = null;
+    var isReconnecting = false;
+    var lastTeacherPacketTime = 0;
+    var awaitingPongSince = 0;
+    var lastSentLon = null, lastSentLat = null;
+    var localBroadcastChannel = null;
+
+    var elScreenJoin = null;
+    var elScreenHud = null;
+
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        localBroadcastChannel = new BroadcastChannel('expeditions-classroom-sync');
+      }
+    } catch (e) {}
+
+    function safeSetText(id, text) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = text;
+    }
+
+    function createProceduralPanoTexture() {
+      var canvas = document.createElement('canvas');
+      canvas.width = 1024;
+      canvas.height = 512;
+      var ctx = canvas.getContext('2d');
+      var grad = ctx.createLinearGradient(0, 0, 0, 512);
+      grad.addColorStop(0, '#090d16');
+      grad.addColorStop(0.5, '#1e1b4b');
+      grad.addColorStop(1, '#020617');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 1024, 512);
+
+      ctx.fillStyle = '#ffffff';
+      for (var i = 0; i < 150; i++) {
+        var x = Math.random() * 1024;
+        var y = Math.random() * 512;
+        var r = Math.random() * 1.4;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      var tex = new THREE.CanvasTexture(canvas);
+      tex.minFilter = THREE.LinearFilter;
+      tex.generateMipmaps = false;
+      return tex;
+    }
+
+    /**
+     * Memory-safe panorama loader for iPod touch 6th Gen (1 GB RAM).
+     * Downscales 4K textures to max 2048x1024 on a 2D canvas and disposes
+     * the previous GPU texture so iOS 12 Safari never exceeds its memory cap.
+     */
+    function loadSafeLowMemPanorama(url, onSuccess, onError) {
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function() {
+        try {
+          var maxW = 2048;
+          var maxH = 1024;
+          var w = img.naturalWidth || img.width || 2048;
+          var h = img.naturalHeight || img.height || 1024;
+
+          if (w > maxW || h > maxH) {
+            var scale = Math.min(maxW / w, maxH / h);
+            w = Math.round(w * scale);
+            h = Math.round(h * scale);
+          }
+
+          var canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+
+          var tex = new THREE.CanvasTexture(canvas);
+          tex.minFilter = THREE.LinearFilter;
+          tex.magFilter = THREE.LinearFilter;
+          tex.generateMipmaps = false;
+          tex.needsUpdate = true;
+
+          // Release image reference promptly
+          img.src = '';
+          if (onSuccess) onSuccess(tex);
+        } catch (err) {
+          if (onError) onError(err);
+        }
+      };
+      img.onerror = function(err) {
+        if (onError) onError(err);
+      };
+      img.src = url;
+    }
+
+    function applySphereTexture(newTex) {
+      if (!sphereMesh || !sphereMesh.material) return;
+      var oldTex = sphereMesh.material.map;
+      sphereMesh.material.map = newTex;
+      sphereMesh.material.color.set(0xffffff);
+      sphereMesh.material.needsUpdate = true;
+      if (oldTex && oldTex !== newTex && typeof oldTex.dispose === 'function') {
+        oldTex.dispose();
+      }
+    }
+
+    function initThreeEngine() {
+      var container = document.getElementById('webgl-canvas-container');
+      if (!container) return;
+      var width = window.innerWidth || 568;
+      var height = window.innerHeight || 320;
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(userFov, width / height, 0.1, 1000);
+      scene.add(camera);
+
+      // Cap pixelRatio at 1 on 1GB RAM iPods for smooth 60fps & minimal VRAM footprint
+      renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'low-power' });
+      renderer.setPixelRatio(1);
+      renderer.setSize(width, height);
+      container.appendChild(renderer.domElement);
+
+      // Lighter sphere geometry (40x28) tailored for Apple A8 GPU
+      var geometry = new THREE.SphereGeometry(500, 40, 28);
+      geometry.scale(-1, 1, 1);
+
+      var material = new THREE.MeshBasicMaterial({ map: createProceduralPanoTexture() });
+      sphereMesh = new THREE.Mesh(geometry, material);
+      scene.add(sphereMesh);
+
+      hotspotGroup = new THREE.Group();
+      scene.add(hotspotGroup);
+
+      setupPointerInteraction(container);
+      window.addEventListener('resize', onWindowResize);
+      updateScreenOrientation();
+      updateCalibrationTargetPositions();
+      requestAnimationFrame(renderLoop);
+    }
+
+    function setupPointerInteraction(container) {
+      if (!container) return;
+      container.addEventListener('touchstart', function(e) {
+        if (e.touches && e.touches.length === 1) {
+          isUserInteracting = true;
+          onPointerDownPointerX = e.touches[0].clientX;
+          onPointerDownPointerY = e.touches[0].clientY;
+          onPointerDownLon = lon;
+          onPointerDownLat = lat;
+        }
+      }, { passive: true });
+
+      container.addEventListener('touchmove', function(e) {
+        if (!isUserInteracting || !e.touches || e.touches.length !== 1) return;
+        var deltaX = (e.touches[0].clientX - onPointerDownPointerX) * 0.2;
+        var deltaY = (e.touches[0].clientY - onPointerDownPointerY) * 0.2;
+        if (!isGyroscopeActive) {
+          lon = deltaX + onPointerDownLon;
+          lat = deltaY + onPointerDownLat;
+        }
+      }, { passive: true });
+
+      container.addEventListener('touchend', function() { isUserInteracting = false; });
+
+      container.addEventListener('mousedown', function(e) {
+        isUserInteracting = true;
+        onPointerDownPointerX = e.clientX;
+        onPointerDownPointerY = e.clientY;
+        onPointerDownLon = lon;
+        onPointerDownLat = lat;
+      });
+
+      window.addEventListener('mousemove', function(e) {
+        if (!isUserInteracting) return;
+        if (!isGyroscopeActive) {
+          lon = (e.clientX - onPointerDownPointerX) * 0.18 + onPointerDownLon;
+          lat = (e.clientY - onPointerDownPointerY) * 0.18 + onPointerDownLat;
+        }
+      });
+
+      window.addEventListener('mouseup', function() { isUserInteracting = false; });
+    }
+
+    function onWindowResize() {
+      if (!renderer || !camera) return;
+      var w = window.innerWidth || 568;
+      var h = window.innerHeight || 320;
+
+      if (isVrSplitMode) {
+        camera.aspect = (w / 2) / h;
+      } else {
+        camera.aspect = w / h;
+      }
+      camera.fov = userFov;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      updateScreenOrientation();
+      updateCalibrationTargetPositions();
+    }
+
+    function updateScreenOrientation() {
+      if (typeof window.orientation !== 'undefined') {
+        screenOrientation = window.orientation || 0;
+      } else if (screen && screen.orientation && typeof screen.orientation.angle !== 'undefined') {
+        screenOrientation = screen.orientation.angle || 0;
+      } else {
+        screenOrientation = 0;
+      }
+    }
+
+    function setCameraQuaternionFromDevice(quaternion, alpha, beta, gamma, orient) {
+      euler.set(
+        THREE.MathUtils.degToRad(beta),
+        THREE.MathUtils.degToRad(alpha),
+        -THREE.MathUtils.degToRad(gamma),
+        'YXZ'
+      );
+
+      quaternion.setFromEuler(euler);
+      quaternion.multiply(q1);
+      quaternion.multiply(q0.setFromAxisAngle(zee, -THREE.MathUtils.degToRad(orient)));
+    }
+
+    function renderLoop() {
+      requestAnimationFrame(renderLoop);
+
+      if (isGyroscopeActive && deviceOrientationData && camera) {
+        var alpha = deviceOrientationData.alpha ? deviceOrientationData.alpha : 0;
+        var beta = deviceOrientationData.beta ? deviceOrientationData.beta : 0;
+        var gamma = deviceOrientationData.gamma ? deviceOrientationData.gamma : 0;
+
+        setCameraQuaternionFromDevice(camera.quaternion, alpha, beta, gamma, screenOrientation);
+
+        var forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        lat = THREE.MathUtils.radToDeg(Math.asin(Math.max(-1, Math.min(1, forward.y))));
+        lon = THREE.MathUtils.radToDeg(Math.atan2(forward.x, forward.z));
+      } else {
+        lat = Math.max(-85, Math.min(85, lat));
+        var phi = THREE.MathUtils.degToRad(90 - lat);
+        var theta = THREE.MathUtils.degToRad(lon);
+
+        var target = new THREE.Vector3();
+        target.x = 500 * Math.sin(phi) * Math.sin(theta);
+        target.y = 500 * Math.cos(phi);
+        target.z = 500 * Math.sin(phi) * Math.cos(theta);
+
+        if (camera) camera.lookAt(target);
+      }
+
+      if (impromptuMarker) {
+        var t = performance.now() * 0.005;
+        var pulse = 38 + Math.sin(t * 4) * 8;
+        impromptuMarker.scale.set(pulse, pulse, 1);
+
+        if (impromptuMarker.userData && impromptuMarker.userData.basePos) {
+          var bounceFactor = 1 + Math.sin(t * 6) * 0.035;
+          impromptuMarker.position.copy(impromptuMarker.userData.basePos).multiplyScalar(bounceFactor);
+        }
+      }
+
+      updateDirectionalAttentionPointers();
+
+      if (isVrSplitMode && renderer && scene && camera) {
+        renderHomidoTrueStereo();
+      } else if (renderer && scene && camera) {
+        renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+        renderer.setScissorTest(false);
+        renderer.render(scene, camera);
+      }
+    }
+
+    function renderHomidoTrueStereo() {
+      var w = window.innerWidth || 568;
+      var h = window.innerHeight || 320;
+      var halfW = Math.floor(w / 2);
+
+      // Left Eye
+      var leftX = -opticalPixelOffset;
+      renderer.setViewport(leftX, 0, halfW, h);
+      renderer.setScissor(0, 0, halfW, h);
+      renderer.setScissorTest(true);
+      renderer.render(scene, camera);
+
+      // Right Eye
+      var rightX = halfW + opticalPixelOffset;
+      renderer.setViewport(rightX, 0, halfW, h);
+      renderer.setScissor(halfW, 0, halfW, h);
+      renderer.setScissorTest(true);
+      renderer.render(scene, camera);
+
+      renderer.setScissorTest(false);
+    }
+
+    function updateCalibrationTargetPositions() {
+      var w = window.innerWidth || 568;
+      var leftTarget = document.getElementById('calib-left');
+      var rightTarget = document.getElementById('calib-right');
+      var arrowLeft = document.getElementById('arrow-wrap-left');
+      var arrowRight = document.getElementById('arrow-wrap-right');
+      var toastLeft = document.getElementById('student-toast-stereo-left');
+      var toastRight = document.getElementById('student-toast-stereo-right');
+      var artifactLeft = document.getElementById('artifact-wrap-left');
+      var artifactRight = document.getElementById('artifact-wrap-right');
+
+      if (!leftTarget || !rightTarget) return;
+
+      var leftCenter = (w / 4) - opticalPixelOffset;
+      var rightCenter = (3 * w / 4) + opticalPixelOffset;
+
+      leftTarget.style.left = leftCenter + 'px';
+      rightTarget.style.left = rightCenter + 'px';
+
+      if (arrowLeft) arrowLeft.style.left = leftCenter + 'px';
+      if (arrowRight) arrowRight.style.left = rightCenter + 'px';
+
+      if (toastLeft) toastLeft.style.left = leftCenter + 'px';
+      if (toastRight) toastRight.style.left = rightCenter + 'px';
+
+      if (artifactLeft) artifactLeft.style.left = leftCenter + 'px';
+      if (artifactRight) artifactRight.style.left = rightCenter + 'px';
+    }
+
+    function updateDirectionalAttentionPointers() {
+      var arrowMono = document.getElementById('arrow-wrap-mono');
+      var arrowLeft = document.getElementById('arrow-wrap-left');
+      var arrowRight = document.getElementById('arrow-wrap-right');
+
+      var rotorMono = document.getElementById('arrow-rotor-mono');
+      var rotorLeft = document.getElementById('arrow-rotor-left');
+      var rotorRight = document.getElementById('arrow-rotor-right');
+
+      if (!activeSpotlightCoords || !camera) {
+        if (arrowMono) arrowMono.style.opacity = '0';
+        if (arrowLeft) arrowLeft.style.opacity = '0';
+        if (arrowRight) arrowRight.style.opacity = '0';
+        hideArtifactDisplay();
+        return;
+      }
+
+      var rad = 450;
+      var tPhi = activeSpotlightCoords.phi;
+      var tTheta = activeSpotlightCoords.theta;
+      var targetPos = new THREE.Vector3(
+        rad * Math.sin(tPhi) * Math.sin(tTheta),
+        rad * Math.cos(tPhi),
+        rad * Math.sin(tPhi) * Math.cos(tTheta)
+      );
+
+      camera.updateMatrixWorld();
+
+      var cameraDir = new THREE.Vector3();
+      camera.getWorldDirection(cameraDir);
+
+      var targetDir = targetPos.clone().normalize();
+      var dotProduct = cameraDir.dot(targetDir);
+      var isFacingTarget = dotProduct > 0.94;
+
+      if (isFacingTarget) {
+        if (arrowMono) arrowMono.style.opacity = '0';
+        if (arrowLeft) arrowLeft.style.opacity = '0';
+        if (arrowRight) arrowRight.style.opacity = '0';
+
+        if (activeSpotlightData && activeSpotlightData.image) {
+          showArtifactDisplay();
+        } else {
+          hideArtifactDisplay();
+        }
+        return;
+      }
+
+      hideArtifactDisplay();
+
+      var camQuatInverse = camera.quaternion.clone().invert();
+      var localTargetDir = targetDir.clone().applyQuaternion(camQuatInverse);
+
+      var screenAngleRad = Math.atan2(localTargetDir.x, localTargetDir.y);
+      if (localTargetDir.z > 0) {
+        screenAngleRad = localTargetDir.x >= 0 ? Math.PI / 2 : -Math.PI / 2;
+      }
+
+      var rotationDeg = THREE.MathUtils.radToDeg(screenAngleRad);
+      var transformCss = 'rotate(' + rotationDeg + 'deg)';
+
+      if (rotorMono) {
+        rotorMono.style.webkitTransform = transformCss;
+        rotorMono.style.transform = transformCss;
+      }
+      if (rotorLeft) {
+        rotorLeft.style.webkitTransform = transformCss;
+        rotorLeft.style.transform = transformCss;
+      }
+      if (rotorRight) {
+        rotorRight.style.webkitTransform = transformCss;
+        rotorRight.style.transform = transformCss;
+      }
+
+      if (isVrSplitMode) {
+        if (arrowMono) arrowMono.style.opacity = '0';
+        if (arrowLeft) arrowLeft.style.opacity = '1';
+        if (arrowRight) arrowRight.style.opacity = '1';
+      } else {
+        if (arrowMono) arrowMono.style.opacity = '1';
+        if (arrowLeft) arrowLeft.style.opacity = '0';
+        if (arrowRight) arrowRight.style.opacity = '0';
+      }
+    }
+
+    function showArtifactDisplay() {
+      var artMono = document.getElementById('artifact-wrap-mono');
+      var artLeft = document.getElementById('artifact-wrap-left');
+      var artRight = document.getElementById('artifact-wrap-right');
+
+      if (isVrSplitMode) {
+        if (artMono) { artMono.classList.add('hidden'); artMono.style.opacity = '0'; }
+        if (artLeft) { artLeft.classList.remove('hidden'); artLeft.style.opacity = '1'; }
+        if (artRight) { artRight.classList.remove('hidden'); artRight.style.opacity = '1'; }
+      } else {
+        if (artMono) { artMono.classList.remove('hidden'); artMono.style.opacity = '1'; }
+        if (artLeft) { artLeft.classList.add('hidden'); artLeft.style.opacity = '0'; }
+        if (artRight) { artRight.classList.add('hidden'); artRight.style.opacity = '0'; }
+      }
+    }
+
+    function hideArtifactDisplay() {
+      var artMono = document.getElementById('artifact-wrap-mono');
+      var artLeft = document.getElementById('artifact-wrap-left');
+      var artRight = document.getElementById('artifact-wrap-right');
+
+      if (artMono) artMono.style.opacity = '0';
+      if (artLeft) artLeft.style.opacity = '0';
+      if (artRight) artRight.style.opacity = '0';
+    }
+
+    function setArtifactData(data) {
+      var imgMono = document.getElementById('artifact-img-mono');
+      var titleMono = document.getElementById('artifact-title-mono');
+      var imgLeft = document.getElementById('artifact-img-left');
+      var titleLeft = document.getElementById('artifact-title-left');
+      var imgRight = document.getElementById('artifact-img-right');
+      var titleRight = document.getElementById('artifact-title-right');
+
+      var src = (data && data.image) ? data.image : '';
+      var title = (data && data.title) ? data.title : '';
+
+      if (imgMono) imgMono.src = src;
+      if (titleMono) titleMono.textContent = title;
+      if (imgLeft) imgLeft.src = src;
+      if (titleLeft) titleLeft.textContent = title;
+      if (imgRight) imgRight.src = src;
+      if (titleRight) titleRight.textContent = title;
+    }
+
+    function loadScene(sceneData) {
+      if (!sceneData) return;
+      currentScene = sceneData;
+      loadingSceneId = sceneData.id;
+
+      safeSetText('hud-scene-title', sceneData.title || 'Scene');
+
+      if (sceneData.panorama) {
+        loadSafeLowMemPanorama(
+          sceneData.panorama,
+          function(tex) {
+            loadingSceneId = null;
+            applySphereTexture(tex);
+          },
+          function(err) {
+            loadingSceneId = null;
+            console.warn('Panorama image failed on iPod, using fallback:', err);
+            applySphereTexture(createProceduralPanoTexture());
+          }
+        );
+      } else {
+        loadingSceneId = null;
+      }
+
+      renderHotspots(sceneData.hotspots || []);
+      clearImpromptuMarker();
+      clearTargetGuide();
+    }
+
+    function renderHotspots(hotspots) {
+      if (!hotspotGroup) return;
+      while (hotspotGroup.children.length > 0) {
+        var obj = hotspotGroup.children[0];
+        if (obj.material && obj.material.map) obj.material.map.dispose();
+        if (obj.material) obj.material.dispose();
+        hotspotGroup.remove(obj);
+      }
+
+      (hotspots || []).forEach(function(h) {
+        var phi = h.phi;
+        var theta = h.theta;
+        var radius = 450;
+
+        var x = radius * Math.sin(phi) * Math.sin(theta);
+        var y = radius * Math.cos(phi);
+        var z = radius * Math.sin(phi) * Math.cos(theta);
+
+        var canvas = document.createElement('canvas');
+        canvas.width = 96;
+        canvas.height = 96;
+        var ctx = canvas.getContext('2d');
+
+        ctx.strokeStyle = '#ea580c';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(48, 48, 36, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#f97316';
+        ctx.beginPath();
+        ctx.arc(48, 48, 16, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(48, 48, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        var tex = new THREE.CanvasTexture(canvas);
+        tex.minFilter = THREE.LinearFilter;
+        tex.generateMipmaps = false;
+
+        var spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+        var sprite = new THREE.Sprite(spriteMat);
+        sprite.position.set(x, y, z);
+        sprite.scale.set(32, 32, 1);
+        sprite.userData = h;
+        sprite.visible = false;
+
+        hotspotGroup.add(sprite);
+      });
+    }
+
+    function placeImpromptuMarker(phi, theta, title) {
+      clearImpromptuMarker();
+
+      var radius = 450;
+      var x = radius * Math.sin(phi) * Math.sin(theta);
+      var y = radius * Math.cos(phi);
+      var z = radius * Math.sin(phi) * Math.cos(theta);
+
+      var canvas = document.createElement('canvas');
+      canvas.width = 96;
+      canvas.height = 96;
+      var ctx = canvas.getContext('2d');
+
+      ctx.strokeStyle = '#06b6d4';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(48, 48, 38, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#00f0ff';
+      ctx.beginPath();
+      ctx.arc(48, 48, 14, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(48, 48, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      var tex = new THREE.CanvasTexture(canvas);
+      tex.minFilter = THREE.LinearFilter;
+      tex.generateMipmaps = false;
+
+      var spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+      impromptuMarker = new THREE.Sprite(spriteMat);
+      impromptuMarker.position.set(x, y, z);
+      impromptuMarker.scale.set(40, 40, 1);
+      impromptuMarker.userData = { basePos: new THREE.Vector3(x, y, z) };
+
+      if (scene) scene.add(impromptuMarker);
+
+      activeSpotlightCoords = { phi: phi, theta: theta };
+      activeSpotlightData = { title: title || 'Teacher Focal Point', image: null };
+      setArtifactData(activeSpotlightData);
+      showStudentToast('Teacher marked a focal point');
+    }
+
+    function clearImpromptuMarker() {
+      if (impromptuMarker && scene) {
+        if (impromptuMarker.material && impromptuMarker.material.map) impromptuMarker.material.map.dispose();
+        if (impromptuMarker.material) impromptuMarker.material.dispose();
+        scene.remove(impromptuMarker);
+        impromptuMarker = null;
+      }
+    }
+
+    function activateTargetGuide(phi, theta, spotlightData) {
+      activeSpotlightCoords = { phi: phi, theta: theta };
+      activeSpotlightData = spotlightData || null;
+      setArtifactData(activeSpotlightData);
+
+      if (hotspotGroup) {
+        hotspotGroup.children.forEach(function(child) {
+          if (child.userData) {
+            var isMatch = Math.abs(child.userData.phi - phi) < 0.05 && Math.abs(child.userData.theta - theta) < 0.05;
+            child.visible = isMatch;
+          }
+        });
+      }
+    }
+
+    function clearTargetGuide() {
+      activeSpotlightCoords = null;
+      activeSpotlightData = null;
+      clearImpromptuMarker();
+      hideArtifactDisplay();
+      setArtifactData(null);
+
+      if (hotspotGroup) {
+        hotspotGroup.children.forEach(function(child) {
+          child.visible = false;
+        });
+      }
+    }
+
+    /* ---------------------------------------------------------
+       WebRTC Networking (iOS 12 Compatible + Roaming Recovery)
+       --------------------------------------------------------- */
+    function scheduleRoamingReconnect(delayMs) {
+      var delay = delayMs || 2000;
+      if (!hasJoinedSession) return;
+      clearTimeout(autoReconnectTimer);
+      autoReconnectTimer = setTimeout(function() {
+        if (!hasJoinedSession) return;
+        if (teacherConn && teacherConn.open && isConnectedToTeacher) {
+          isReconnecting = false;
+          return;
+        }
+        isConnectedToTeacher = false;
+        isReconnecting = true;
+        awaitingPongSince = 0;
+        if (peer && !peer.destroyed && !peer.disconnected && peer.open) {
+          connectToTeacherPeer('teacher-room-' + currentRoomCode);
+        } else {
+          initializePeerNetwork(currentRoomCode, true);
+        }
+      }, delay);
+    }
+
+    function initializePeerNetwork(roomCode, silentReconnect) {
+      currentRoomCode = roomCode.trim();
+      hasJoinedSession = true;
+      isConnectedToTeacher = false;
+      var teacherPeerId = 'teacher-room-' + currentRoomCode;
+      var errPill = document.getElementById('join-error-pill');
+      var statusPill = document.getElementById('join-status-pill');
+      var btnIcon = document.getElementById('btn-join-icon');
+      var btnText = document.getElementById('btn-join-text');
+
+      if (!silentReconnect) {
+        if (btnIcon) btnIcon.className = 'fa-solid fa-circle-notch fa-spin';
+        if (btnText) btnText.textContent = 'Connecting...';
+        if (errPill) errPill.classList.add('hidden');
+        if (statusPill) {
+          statusPill.classList.remove('hidden');
+          safeSetText('join-status-msg', '1/3: Connecting to relay...');
+        }
+      }
+
+      clearTimeout(iceGraceTimer);
+      if (teacherConn) {
+        try { teacherConn.close(); } catch (e) {}
+        teacherConn = null;
+      }
+      if (peer) {
+        try {
+          peer.removeAllListeners();
+          peer.destroy();
+        } catch (e) {}
+        peer = null;
+      }
+
+      clearTimeout(connectionTimeoutTimer);
+
+      try {
+        peer = new Peer(undefined, {
+          debug: 1,
+          config: {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+          }
+        });
+
+        peer.on('open', function(id) {
+          studentId = id;
+          safeSetText('network-client-id', 'ID: ' + id.substring(0, 10));
+          if (!silentReconnect && statusPill) {
+            safeSetText('join-status-msg', '2/3: Joining room ' + currentRoomCode + '...');
+          }
+          connectToTeacherPeer(teacherPeerId);
+        });
+
+        peer.on('disconnected', function() {
+          if (hasJoinedSession && peer && !peer.destroyed) {
+            try { peer.reconnect(); } catch (e) {}
+            if (!isConnectedToTeacher) {
+              scheduleRoamingReconnect(2000);
+            }
+          }
+        });
+
+        peer.on('error', function(err) {
+          console.warn('iPod Peer error:', err);
+          if (silentReconnect || isReconnecting || (hasJoinedSession && currentScene)) {
+            scheduleRoamingReconnect(2000);
+            return;
+          }
+          if (err && err.type === 'peer-unavailable') {
+            if (errPill) {
+              errPill.classList.remove('hidden');
+              safeSetText('join-error-msg', 'Room ' + currentRoomCode + ' not found. Check Teacher iPad.');
+            }
+            if (statusPill) statusPill.classList.add('hidden');
+            if (btnIcon) btnIcon.className = 'fa-solid fa-satellite-dish';
+            if (btnText) btnText.textContent = 'Enter Expedition';
+          }
+        });
+      } catch (err) {
+        console.warn('PeerJS init failed:', err);
+        setupLocalChannelSync();
+      }
+
+      setupLocalChannelSync();
+    }
+
+    function connectToTeacherPeer(teacherPeerId) {
+      if (!peer || peer.destroyed) {
+        scheduleRoamingReconnect(1000);
+        return;
+      }
+
+      clearTimeout(iceGraceTimer);
+      if (teacherConn) {
+        try { teacherConn.close(); } catch (e) {}
+        teacherConn = null;
+      }
+
+      try {
+        teacherConn = peer.connect(teacherPeerId, { reliable: true });
+
+        if (teacherConn.peerConnection) {
+          teacherConn.peerConnection.oniceconnectionstatechange = function() {
+            var pc = teacherConn ? teacherConn.peerConnection : null;
+            var iceState = pc ? pc.iceConnectionState : null;
+            if (iceState === 'connected' || iceState === 'completed') {
+              clearTimeout(iceGraceTimer);
+              lastTeacherPacketTime = Date.now();
+            } else if (iceState === 'disconnected') {
+              clearTimeout(iceGraceTimer);
+              iceGraceTimer = setTimeout(function() {
+                var curPc = teacherConn ? teacherConn.peerConnection : null;
+                var curIce = curPc ? curPc.iceConnectionState : null;
+                if (curIce === 'disconnected' || curIce === 'failed' || curIce === 'closed') {
+                  isConnectedToTeacher = false;
+                  scheduleRoamingReconnect(500);
+                }
+              }, 3500);
+            } else if (iceState === 'failed' || iceState === 'closed') {
+              clearTimeout(iceGraceTimer);
+              isConnectedToTeacher = false;
+              scheduleRoamingReconnect(1200);
+            }
+          };
+        }
+
+        teacherConn.on('open', function() {
+          var statusPill = document.getElementById('join-status-pill');
+          if (statusPill) safeSetText('join-status-msg', '3/3: Loading panorama...');
+          lastTeacherPacketTime = Date.now();
+          awaitingPongSince = 0;
+          onTeacherConnected(!isReconnecting);
+          sendHeartbeat('STUDENT_JOIN');
+        });
+
+        teacherConn.on('data', function(data) {
+          lastTeacherPacketTime = Date.now();
+          awaitingPongSince = 0;
+          handleTeacherIncomingPayload(data);
+        });
+
+        teacherConn.on('close', function() {
+          clearTimeout(iceGraceTimer);
+          isConnectedToTeacher = false;
+          awaitingPongSince = 0;
+          if (hasJoinedSession) {
+            scheduleRoamingReconnect(1800);
+          }
+        });
+
+        teacherConn.on('error', function() {
+          clearTimeout(iceGraceTimer);
+          isConnectedToTeacher = false;
+          awaitingPongSince = 0;
+          if (hasJoinedSession) {
+            scheduleRoamingReconnect(2000);
+          }
+        });
+      } catch (e) {
+        if (hasJoinedSession) {
+          scheduleRoamingReconnect(2000);
+        }
+      }
+
+      clearTimeout(connectionTimeoutTimer);
+      connectionTimeoutTimer = setTimeout(function() {
+        if (!isConnectedToTeacher) {
+          if (isReconnecting || currentScene) {
+            scheduleRoamingReconnect(2000);
+            return;
+          }
+          var statusPill = document.getElementById('join-status-pill');
+          var errPill = document.getElementById('join-error-pill');
+          var btnIcon = document.getElementById('btn-join-icon');
+          var btnText = document.getElementById('btn-join-text');
+
+          if (statusPill) statusPill.classList.add('hidden');
+          if (errPill) {
+            errPill.classList.remove('hidden');
+            safeSetText('join-error-msg', 'Timed out connecting to room ' + currentRoomCode);
+          }
+          if (btnIcon) btnIcon.className = 'fa-solid fa-satellite-dish';
+          if (btnText) btnText.textContent = 'Retry Connection';
+        }
+      }, 9500);
+    }
+
+    function onTeacherConnected(announceToast) {
+      isConnectedToTeacher = true;
+      isReconnecting = false;
+      lastTeacherPacketTime = Date.now();
+      awaitingPongSince = 0;
+      clearTimeout(connectionTimeoutTimer);
+      clearTimeout(autoReconnectTimer);
+      clearTimeout(iceGraceTimer);
+
+      var joinScreen = elScreenJoin || document.getElementById('screen-join');
+      var hudScreen = elScreenHud || document.getElementById('screen-hud');
+
+      if (joinScreen) joinScreen.classList.add('hidden');
+      if (hudScreen) hudScreen.classList.remove('hidden');
+
+      safeSetText('hud-room-code', currentRoomCode);
+
+      if (!currentScene) {
+        safeSetText('hud-tour-title', 'Syncing...');
+        safeSetText('hud-scene-title', 'Loading tour...');
+      }
+
+      clearInterval(heartbeatInterval);
+      clearInterval(gazeBroadcastInterval);
+
+      heartbeatInterval = setInterval(function() {
+        if (!hasJoinedSession) return;
+
+        if (!teacherConn || !teacherConn.open) {
+          isConnectedToTeacher = false;
+          scheduleRoamingReconnect(1000);
+          return;
+        }
+
+        var now = Date.now();
+        if (lastTeacherPacketTime > 0 && (now - lastTeacherPacketTime) > 20000) {
+          if (awaitingPongSince === 0) {
+            awaitingPongSince = now;
+            sendHeartbeat('STUDENT_HEARTBEAT');
+            return;
+          } else if ((now - awaitingPongSince) > 6000) {
+            isConnectedToTeacher = false;
+            awaitingPongSince = 0;
+            scheduleRoamingReconnect(800);
+            return;
+          }
+        }
+
+        sendHeartbeat('STUDENT_HEARTBEAT');
+      }, 4000);
+
+      sendHeartbeat('STUDENT_JOIN');
+      // 250ms gaze telemetry interval (4 Hz) is plenty smooth and reduces A8 CPU load
+      gazeBroadcastInterval = setInterval(sendGazeTelemetry, 250);
+
+      if (announceToast) {
+        showStudentToast('Connected to Room ' + currentRoomCode + '!');
+      }
+    }
+
+    function sendHeartbeat(msgType) {
+      var activeId = currentScene ? currentScene.id : loadingSceneId;
+      var payload = {
+        type: msgType || 'STUDENT_HEARTBEAT',
+        roomCode: currentRoomCode,
+        studentId: studentId,
+        studentName: studentName,
+        currentSceneId: activeId
+      };
+
+      if (teacherConn && teacherConn.open) {
+        try { teacherConn.send(payload); } catch (e) {}
+      }
+      if (localBroadcastChannel) {
+        try { localBroadcastChannel.postMessage(payload); } catch (e) {}
+      }
+    }
+
+    function sendGazeTelemetry() {
+      if (!isConnectedToTeacher) return;
+
+      var roundedLon = Math.round(lon * 10) / 10;
+      var roundedLat = Math.round(lat * 10) / 10;
+
+      if (lastSentLon !== null && Math.abs(roundedLon - lastSentLon) < 2.0 && Math.abs(roundedLat - lastSentLat) < 2.0) {
+        return;
+      }
+
+      lastSentLon = roundedLon;
+      lastSentLat = roundedLat;
+
+      var payload = {
+        type: 'STUDENT_GAZE',
+        roomCode: currentRoomCode,
+        studentId: studentId,
+        studentName: studentName,
+        lon: roundedLon,
+        lat: roundedLat
+      };
+
+      if (teacherConn && teacherConn.open) {
+        try { teacherConn.send(payload); } catch (e) {}
+      }
+      if (localBroadcastChannel) {
+        try { localBroadcastChannel.postMessage(payload); } catch (e) {}
+      }
+    }
+
+    function setupLocalChannelSync() {
+      if (!localBroadcastChannel) return;
+      localBroadcastChannel.onmessage = function(event) {
+        var data = event.data;
+        if (!data || (data.roomCode && data.roomCode !== currentRoomCode)) return;
+        handleTeacherIncomingPayload(data);
+      };
+    }
+
+    function handleTeacherIncomingPayload(data) {
+      if (!data) return;
+
+      if (data.type === 'TEACHER_PONG') {
+        awaitingPongSince = 0;
+        if (!isConnectedToTeacher && hasJoinedSession) {
+          onTeacherConnected(false);
+        }
+        return;
+      }
+
+      if (data.type === 'TEACHER_HANDSHAKE_ACK' || data.type === 'TEACHER_CATCHUP_STATE') {
+        awaitingPongSince = 0;
+        if (!isConnectedToTeacher) {
+          onTeacherConnected(false);
+        }
+        if (data.tour) {
+          currentTour = data.tour;
+          safeSetText('hud-tour-title', currentTour.title || 'Tour');
+        }
+        if (data.scene && (!currentScene || currentScene.id !== data.scene.id)) {
+          loadScene(data.scene);
+        } else if (!currentScene && data.tour && data.tour.scenes && data.tour.scenes[0]) {
+          loadScene(data.tour.scenes[0]);
+        }
+      } else if (data.type === 'TEACHER_CHANGE_TOUR' && data.tour) {
+        currentTour = data.tour;
+        safeSetText('hud-tour-title', currentTour.title || 'Tour');
+        showStudentToast('New tour: ' + currentTour.title);
+        if (data.scene) {
+          loadScene(data.scene);
+        } else if (currentTour.scenes && currentTour.scenes[0]) {
+          loadScene(currentTour.scenes[0]);
+        }
+      } else if (data.type === 'TEACHER_CHANGE_SCENE' && data.sceneData) {
+        if (!currentScene || currentScene.id !== data.sceneData.id) {
+          loadScene(data.sceneData);
+        }
+      } else if (data.type === 'TEACHER_SPOTLIGHT') {
+        activateTargetGuide(data.phi, data.theta, {
+          title: data.title,
+          image: data.image
+        });
+      } else if (data.type === 'TEACHER_IMPROMPTU_PING') {
+        placeImpromptuMarker(data.phi, data.theta, data.title);
+      } else if (data.type === 'TEACHER_CLEAR_SPOTLIGHT' || data.type === 'TEACHER_CLEAR_IMPROMPTU_PING') {
+        clearTargetGuide();
+      }
+    }
+
+    function showStudentToast(message) {
+      var monoToast = document.getElementById('student-toast-mono');
+      var leftToast = document.getElementById('student-toast-stereo-left');
+      var rightToast = document.getElementById('student-toast-stereo-right');
+
+      if (monoToast) {
+        monoToast.textContent = message;
+        monoToast.classList.remove('opacity-0');
+      }
+      if (leftToast) {
+        leftToast.textContent = message;
+        leftToast.classList.remove('opacity-0');
+      }
+      if (rightToast) {
+        rightToast.textContent = message;
+        rightToast.classList.remove('opacity-0');
+      }
+
+      setTimeout(function() {
+        if (monoToast) monoToast.classList.add('opacity-0');
+        if (leftToast) leftToast.classList.add('opacity-0');
+        if (rightToast) rightToast.classList.add('opacity-0');
+      }, 2800);
+    }
+
+    /* ---------------------------------------------------------
+       UI Setup & DOM Event Listeners
+       --------------------------------------------------------- */
+    function setupDOMHandlers() {
+      var btnJoin = document.getElementById('btn-join-room');
+      if (btnJoin) {
+        var lastJoinTrigger = 0;
+        var triggerJoinExpedition = function(e) {
+          if (e) e.preventDefault();
+          var now = Date.now();
+          if (now - lastJoinTrigger < 500) return;
+          lastJoinTrigger = now;
+
+          var input = document.getElementById('input-room-code');
+          var code = (input ? input.value : '48291').trim() || '48291';
+
+          var statusPill = document.getElementById('join-status-pill');
+          var btnIcon = document.getElementById('btn-join-icon');
+          var btnText = document.getElementById('btn-join-text');
+          if (btnIcon) btnIcon.className = 'fa-solid fa-circle-notch fa-spin';
+          if (btnText) btnText.textContent = 'Connecting...';
+          if (statusPill) {
+            statusPill.classList.remove('hidden');
+            safeSetText('join-status-msg', 'Starting sensors & connecting...');
+          }
+
+          if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission().then(function(res) {
+              if (res === 'granted') enableGyroTracking();
+            }).catch(function() {});
+          } else if (window.DeviceOrientationEvent) {
+            enableGyroTracking();
+          }
+
+          initializePeerNetwork(code, false);
+        };
+
+        btnJoin.addEventListener('click', triggerJoinExpedition);
+        btnJoin.addEventListener('touchend', triggerJoinExpedition, { passive: false });
+      }
+
+      var btnSample = document.getElementById('btn-quick-sample-tour');
+      if (btnSample) {
+        btnSample.onclick = function() {
+          document.getElementById('screen-join').classList.add('hidden');
+          document.getElementById('screen-hud').classList.remove('hidden');
+          safeSetText('hud-tour-title', SAMPLE_PREVIEW_TOUR.title);
+          loadScene(SAMPLE_PREVIEW_TOUR.scenes[0]);
+        };
+      }
+
+      var btnLeave = document.getElementById('btn-leave-room');
+      if (btnLeave) {
+        btnLeave.onclick = function() {
+          hasJoinedSession = false;
+          isConnectedToTeacher = false;
+          isReconnecting = false;
+          clearTimeout(autoReconnectTimer);
+          clearTimeout(connectionTimeoutTimer);
+          clearInterval(heartbeatInterval);
+          clearInterval(gazeBroadcastInterval);
+          if (teacherConn) {
+            try { teacherConn.close(); } catch (e) {}
+            teacherConn = null;
+          }
+          document.getElementById('screen-hud').classList.add('hidden');
+          document.getElementById('screen-join').classList.remove('hidden');
+        };
+      }
+
+      var btnVr = document.getElementById('btn-toggle-cardboard-vr');
+      if (btnVr) {
+        btnVr.onclick = function() {
+          isVrSplitMode = !isVrSplitMode;
+          document.body.classList.toggle('vr-split-active', isVrSplitMode);
+
+          var lbl = document.getElementById('lbl-vr-mode');
+          if (lbl) lbl.textContent = isVrSplitMode ? 'Exit VR' : 'Homido VR';
+
+          var arrowMono = document.getElementById('arrow-wrap-mono');
+          var arrowLeft = document.getElementById('arrow-wrap-left');
+          var arrowRight = document.getElementById('arrow-wrap-right');
+
+          if (isVrSplitMode) {
+            if (arrowMono) arrowMono.classList.add('hidden');
+            if (arrowLeft) arrowLeft.classList.remove('hidden');
+            if (arrowRight) arrowRight.classList.remove('hidden');
+          } else {
+            if (arrowMono) arrowMono.classList.remove('hidden');
+            if (arrowLeft) arrowLeft.classList.add('hidden');
+            if (arrowRight) arrowRight.classList.add('hidden');
+          }
+
+          updateCalibrationTargetPositions();
+          onWindowResize();
+        };
+      }
+
+      var btnGyro = document.getElementById('btn-toggle-gyro');
+      if (btnGyro) {
+        btnGyro.onclick = function() {
+          if (!isGyroscopeActive) {
+            enableGyroTracking();
+          } else {
+            disableGyroTracking();
+          }
+        };
+      }
+
+      var btnOptics = document.getElementById('btn-toggle-optics');
+      var modalOptics = document.getElementById('homido-optics-modal');
+      var btnCloseOptics = document.getElementById('btn-close-optics');
+
+      if (btnOptics && modalOptics) {
+        btnOptics.onclick = function() {
+          modalOptics.classList.toggle('hidden');
+          document.body.classList.toggle('show-calibration', !modalOptics.classList.contains('hidden'));
+        };
+      }
+      if (btnCloseOptics && modalOptics) {
+        btnCloseOptics.onclick = function() {
+          modalOptics.classList.add('hidden');
+          document.body.classList.remove('show-calibration');
+        };
+      }
+
+      var sliderOffset = document.getElementById('slider-optical-offset');
+      if (sliderOffset) {
+        sliderOffset.value = opticalPixelOffset;
+        safeSetText('lbl-optical-offset', opticalPixelOffset + ' px');
+        sliderOffset.oninput = function(e) {
+          opticalPixelOffset = parseInt(e.target.value, 10);
+          safeSetText('lbl-optical-offset', opticalPixelOffset + ' px');
+          localStorage.setItem('homido_optical_offset', opticalPixelOffset);
+          updateCalibrationTargetPositions();
+        };
+      }
+
+      var sliderFov = document.getElementById('slider-fov');
+      if (sliderFov) {
+        sliderFov.value = userFov;
+        safeSetText('lbl-fov-val', userFov + '°');
+        sliderFov.oninput = function(e) {
+          userFov = parseInt(e.target.value, 10);
+          safeSetText('lbl-fov-val', userFov + '°');
+          localStorage.setItem('homido_fov', userFov);
+          if (camera) {
+            camera.fov = userFov;
+            camera.updateProjectionMatrix();
+          }
+        };
+      }
+
+      var btnResetOptics = document.getElementById('btn-reset-optics');
+      if (btnResetOptics) {
+        btnResetOptics.onclick = function() {
+          opticalPixelOffset = 0;
+          userFov = 92;
+          if (sliderOffset) sliderOffset.value = 0;
+          if (sliderFov) sliderFov.value = 92;
+          safeSetText('lbl-optical-offset', '0 px');
+          safeSetText('lbl-fov-val', '92°');
+          localStorage.removeItem('homido_optical_offset');
+          localStorage.removeItem('homido_fov');
+          if (camera) {
+            camera.fov = userFov;
+            camera.updateProjectionMatrix();
+          }
+          updateCalibrationTargetPositions();
+        };
+      }
+
+      var btnCrosshairs = document.getElementById('btn-toggle-crosshairs');
+      if (btnCrosshairs) {
+        btnCrosshairs.onclick = function() {
+          showCalibrationCrosshairs = !showCalibrationCrosshairs;
+          document.body.classList.toggle('show-calibration', showCalibrationCrosshairs);
+          btnCrosshairs.textContent = showCalibrationCrosshairs ? 'Hide Dots' : 'Show Dots';
+        };
+      }
+    }
+
+    function enableGyroTracking() {
+      if (isGyroscopeActive) return;
+
+      var handleOrientation = function(e) {
+        if (e.alpha !== null) {
+          deviceOrientationData = {
+            alpha: e.alpha,
+            beta: e.beta,
+            gamma: e.gamma
+          };
+        }
+      };
+
+      window.addEventListener('deviceorientation', handleOrientation, true);
+      window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+      isGyroscopeActive = true;
+      safeSetText('lbl-gyro', 'Active');
+    }
+
+    function disableGyroTracking() {
+      isGyroscopeActive = false;
+      deviceOrientationData = null;
+      safeSetText('lbl-gyro', 'Motion');
+    }
+
+    function bootIpodStudentViewer() {
+      elScreenJoin = document.getElementById('screen-join');
+      elScreenHud = document.getElementById('screen-hud');
+      setupDOMHandlers();
+      try {
+        initThreeEngine();
+      } catch (err) {
+        console.warn('3D engine startup notice:', err);
+      }
+
+      window.addEventListener('online', function() {
+        if (hasJoinedSession && !isConnectedToTeacher) {
+          scheduleRoamingReconnect(800);
+        }
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', bootIpodStudentViewer);
+    } else {
+      bootIpodStudentViewer();
+    }
+  </script>
+</body>
+</html>
