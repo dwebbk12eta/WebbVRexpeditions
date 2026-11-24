@@ -52,6 +52,42 @@
       touch-action: manipulation;
     }
 
+    /* Explicit iOS 12 Safari fallback layout so Join Screen always renders above WebGL canvas */
+    #screen-join {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 40;
+      background-color: #020617;
+      display: -webkit-flex;
+      display: flex;
+      -webkit-flex-direction: column;
+      flex-direction: column;
+      -webkit-justify-content: space-between;
+      justify-content: space-between;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 16px;
+    }
+
+    #screen-join.hidden,
+    #screen-hud.hidden,
+    .hidden {
+      display: none !important;
+    }
+
+    #screen-hud {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 30;
+      pointer-events: none;
+    }
+
     /* Clean, Floating Plain White Directional Guidance Arrow */
     .directional-arrow-wrapper {
       position: absolute;
@@ -419,6 +455,25 @@
     var q0 = new THREE.Quaternion();
     var q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
 
+    function toRad(deg) {
+      return deg * (Math.PI / 180);
+    }
+
+    function toDeg(rad) {
+      return rad * (180 / Math.PI);
+    }
+
+    function invertQuat(q) {
+      var copy = q.clone();
+      if (typeof copy.invert === 'function') {
+        return copy.invert();
+      }
+      if (typeof copy.inverse === 'function') {
+        return copy.inverse();
+      }
+      return copy;
+    }
+
     var scene, camera, renderer, sphereMesh;
     var hotspotGroup, impromptuMarker = null;
 
@@ -640,15 +695,15 @@
 
     function setCameraQuaternionFromDevice(quaternion, alpha, beta, gamma, orient) {
       euler.set(
-        THREE.MathUtils.degToRad(beta),
-        THREE.MathUtils.degToRad(alpha),
-        -THREE.MathUtils.degToRad(gamma),
+        toRad(beta),
+        toRad(alpha),
+        -toRad(gamma),
         'YXZ'
       );
 
       quaternion.setFromEuler(euler);
       quaternion.multiply(q1);
-      quaternion.multiply(q0.setFromAxisAngle(zee, -THREE.MathUtils.degToRad(orient)));
+      quaternion.multiply(q0.setFromAxisAngle(zee, -toRad(orient)));
     }
 
     function renderLoop() {
@@ -662,12 +717,12 @@
         setCameraQuaternionFromDevice(camera.quaternion, alpha, beta, gamma, screenOrientation);
 
         var forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-        lat = THREE.MathUtils.radToDeg(Math.asin(Math.max(-1, Math.min(1, forward.y))));
-        lon = THREE.MathUtils.radToDeg(Math.atan2(forward.x, forward.z));
+        lat = toDeg(Math.asin(Math.max(-1, Math.min(1, forward.y))));
+        lon = toDeg(Math.atan2(forward.x, forward.z));
       } else {
         lat = Math.max(-85, Math.min(85, lat));
-        var phi = THREE.MathUtils.degToRad(90 - lat);
-        var theta = THREE.MathUtils.degToRad(lon);
+        var phi = toRad(90 - lat);
+        var theta = toRad(lon);
 
         var target = new THREE.Vector3();
         target.x = 500 * Math.sin(phi) * Math.sin(theta);
@@ -800,7 +855,7 @@
 
       hideArtifactDisplay();
 
-      var camQuatInverse = camera.quaternion.clone().invert();
+      var camQuatInverse = invertQuat(camera.quaternion);
       var localTargetDir = targetDir.clone().applyQuaternion(camQuatInverse);
 
       var screenAngleRad = Math.atan2(localTargetDir.x, localTargetDir.y);
@@ -808,7 +863,7 @@
         screenAngleRad = localTargetDir.x >= 0 ? Math.PI / 2 : -Math.PI / 2;
       }
 
-      var rotationDeg = THREE.MathUtils.radToDeg(screenAngleRad);
+      var rotationDeg = toDeg(screenAngleRad);
       var transformCss = 'rotate(' + rotationDeg + 'deg)';
 
       if (rotorMono) {
