@@ -1171,8 +1171,27 @@
     function removeStudentSession(peerId) {
       studentConnections.delete(peerId);
       studentLastSyncMap.delete(peerId);
-      connectedStudents.delete(peerId);
-      removeStudentGaze(peerId);
+
+      // Only remove student from roster if they don't have a newer active connection
+      let hasActiveReplacement = false;
+      connectedStudents.forEach((info, sKey) => {
+        if (info.peerId === peerId) {
+          // Check if another open connection exists for this studentId
+          studentConnections.forEach((c, pId) => {
+            if (c && c.open && connectedStudents.get(sKey)?.peerId === pId) {
+              hasActiveReplacement = true;
+            }
+          });
+          if (!hasActiveReplacement) {
+            connectedStudents.delete(sKey);
+            removeStudentGaze(sKey);
+          }
+        }
+      });
+      if (connectedStudents.has(peerId)) {
+        connectedStudents.delete(peerId);
+        removeStudentGaze(peerId);
+      }
       updateStudentsCountUI();
     }
 
@@ -1273,9 +1292,20 @@
       const studentKey = msg.studentId || peerId || ('student-' + Math.random().toString(36).substring(2, 7));
 
       if (msg.type === 'STUDENT_JOIN' || msg.type === 'STUDENT_HEARTBEAT') {
-        const studentName = msg.studentName || `Student ${connectedStudents.size + 1}`;
+        const existing = connectedStudents.get(studentKey);
+        // Close superseded connection if this student re-established a new peer socket
+        if (existing && existing.peerId && existing.peerId !== peerId) {
+          const oldConn = studentConnections.get(existing.peerId);
+          if (oldConn && oldConn !== studentConnections.get(peerId)) {
+            try { oldConn.close(); } catch (e) {}
+          }
+          studentConnections.delete(existing.peerId);
+        }
+
+        const studentName = msg.studentName || existing?.name || `Student ${connectedStudents.size + 1}`;
         connectedStudents.set(studentKey, {
           name: studentName,
+          peerId: peerId,
           lastSeen: Date.now()
         });
         updateStudentsCountUI();
